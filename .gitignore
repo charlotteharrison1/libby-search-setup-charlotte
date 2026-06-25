@@ -1,5 +1,6 @@
 # Secrets
 .env
+.python-version
 
 # Data & outputs (large; keep out of git)
 uk/data/
