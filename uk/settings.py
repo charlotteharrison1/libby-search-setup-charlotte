@@ -17,6 +17,11 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 INTERMEDIATE_DIR.mkdir(exist_ok=True)
 
 # Input data files (place these in uk/data/ — see uk/README.md).
+# Source list of constituencies (FID, PCON24CD, PCON24NM, LONG, LAT, …) used by
+# generate_search.py to produce the search-target master file.
+CONSTITUENCIES_PATH = DATA_DIR / "constituencies_2024.csv"
+# Master scrape file: written (pre-scrape, empty groups) by generate_search.py,
+# then filled in by the scraper, then read by pipeline.py.
 NEW_SCRAPE_PATH = DATA_DIR / "master_constituency_place_data_file.csv"
 REDO_GROUPS_PATH = DATA_DIR / "redo_groups.csv"
 PREVIOUS_SCRAPE_PATH = DATA_DIR / "libby_list_groups_by_constituency.csv"

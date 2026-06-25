@@ -3,6 +3,33 @@
 Builds a curated list of local Facebook groups for each **UK 2024 parliamentary
 constituency**.
 
+The full flow is three stages: **generate** search targets → **scrape**
+(external) → **process**. This repo owns generate and process.
+
+## Stage 1 — Generate search targets (`generate_search.py`)
+
+Decides *what to search for*. For each constituency it asks the LLM for up to 5
+of the most popular place names, then explodes them into one row per
+(constituency, place name) and writes the **master scrape file**
+(`data/master_constituency_place_data_file.csv`) with `processed=False` and an
+empty `groups` column. Each place inherits its constituency's centroid LAT/LONG.
+
+```bash
+python -m uk.generate_search --constituency "Aldershot"   # one constituency
+python -m uk.generate_search                              # all 650
+python -m uk.generate_search --output uk/data/new.csv     # write elsewhere
+```
+
+Input: `data/constituencies_2024.csv` (FID, PCON24CD, PCON24NM, LONG, LAT, …).
+To protect existing scraped data, it refuses to overwrite a master file that
+already has a populated `groups` column unless you pass `--force`.
+
+Then the **Facebook scraper** (external to this repo) reads the master file,
+searches each `place_name`, and writes back the `groups` column /
+`processed=True`. Only then run stage 3 below.
+
+## Stage 3 — Process (`pipeline.py`)
+
 ## How it works
 
 1. **Merge redos** — fold any re-scraped rows (`data/redo_groups.csv`) back into

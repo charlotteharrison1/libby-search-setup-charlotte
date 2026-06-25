@@ -7,9 +7,23 @@ produce a curated list per area. Two pipelines share one core:
 - **`us/`** — US congressional districts.
 - **`libby_core/`** — shared code both pipelines depend on.
 
-Each pipeline: parse scraped groups → (UK only) geographically expand by
-population density → keep public groups → **AI-assess relevance** → filter &
-dedupe → write a final CSV.
+### Lifecycle (each pipeline has three stages)
+
+```
+1. GENERATE search targets   →   2. SCRAPE (external)   →   3. PROCESS
+   what to search for             fills the `groups`         parse → (UK) geo
+   per area                       column per target          expand → keep public
+                                                             → AI-assess → output
+```
+
+The **scrape** itself is done outside this repo (a Facebook group scraper reads
+the search targets and writes back a `groups` column). This repo owns stage 1
+(generate) and stage 3 (process).
+
+- **Generate:** UK = `uk/generate_search.py` (AI picks popular place names per
+  constituency); US = `us/download_places.py` (Overture places → locality search
+  filters).
+- **Process:** `uk/pipeline.py` / `us/pipeline.py`.
 
 ## Layout
 
@@ -22,11 +36,13 @@ libby_core/        SHARED building blocks
   settings.py      shared config (OpenRouter key from the root .env)
 
 uk/                UK pipeline (see uk/README.md)
-  pipeline.py  data_loading.py  geo.py  parsing.py  settings.py
+  generate_search.py   stage 1: AI place names → master scrape file
+  pipeline.py  data_loading.py  geo.py  parsing.py  settings.py   stage 3
   data/  output/
 
 us/                US pipeline (see us/README.md)
-  pipeline.py  download_places.py  settings.py
+  download_places.py   stage 1: Overture places → locality search filters
+  pipeline.py  settings.py                                        stage 3
   data/  output/
 
 tests/             unit tests for the shared parser
@@ -68,10 +84,16 @@ OPEN_ROUTER_KEY=sk-or-...
 ## Run
 
 ```bash
-# From the repo root, run pipelines as modules:
+# From the repo root, run as modules.
+
+# Stage 1 — GENERATE search targets (then scrape externally):
+python -m uk.generate_search --constituency "Aldershot"   # one seat
+python -m uk.generate_search                              # all seats
+python -m us.download_places --district il-14             # Overture place download
+
+# Stage 3 — PROCESS the scraped results:
 python -m uk.pipeline --constituency "Sittingbourne and Sheppey"   # one seat
 python -m uk.pipeline                                              # all seats
-
 python -m us.pipeline --district il-14                             # one district
 
 # Inspect inputs without spending LLM calls:

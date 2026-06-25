@@ -26,9 +26,12 @@ part of the US flow.
 | `<district>_places.csv` | scraped groups keyed by place name (needs a `groups` column) |
 | `<district>_localities.csv` | scraped groups keyed by locality (needs a `groups` column) |
 
-## Data prep — `download_places.py`
+## Stage 1 — Generate search targets — `download_places.py`
 
-Run **once per district**, before scraping, to build the place/locality lists:
+This is the US equivalent of `uk/generate_search.py`: it decides *what to search
+for*. Run **once per district**, before scraping, to build the place/locality
+lists (the `filters_param` column is the Facebook search filter — the actual
+"search string"):
 
 ```bash
 python -m us.download_places --district il-14 --statefp 17 --cd-fp 14
