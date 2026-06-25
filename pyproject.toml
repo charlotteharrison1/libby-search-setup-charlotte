@@ -1,0 +1,24 @@
+[project]
+name = "libby-search-setup"
+version = "0.1.0"
+description = "Find and assess local Facebook groups for UK constituencies and US congressional districts."
+requires-python = ">=3.11"
+dependencies = [
+    "pandas",
+    "geopandas",
+    "shapely",
+    "numpy",
+    "openai",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+us = ["duckdb"]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["libby_core", "uk", "us"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

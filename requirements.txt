@@ -1,0 +1,8 @@
+pandas
+geopandas
+shapely
+numpy
+openai
+python-dotenv
+# US data-prep only (us/download_places.py):
+duckdb
