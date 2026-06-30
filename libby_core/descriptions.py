@@ -12,6 +12,7 @@ without regenerating ~600 descriptions.
 """
 
 import logging
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -20,7 +21,7 @@ from libby_core import ai
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "google/gemini-3-pro-preview:online"
+DEFAULT_MODEL = "google/gemini-2.5-pro-preview:online"
 DEFAULT_MAX_TOKENS = 20_000
 
 DEFAULT_PROMPT_TEMPLATE = (
@@ -91,6 +92,7 @@ def ensure_description(
                 return desc
 
     logger.info("  Generating description for %s (%s)", area_name, area_id)
+    t0 = time.perf_counter()
     desc = generate_description(
         area_name,
         area_kind=area_kind,
@@ -98,6 +100,7 @@ def ensure_description(
         model=model,
         max_tokens=max_tokens,
     ) or ""
+    logger.info("  Description generated in %.1fs", time.perf_counter() - t0)
 
     new_row = pd.DataFrame([{id_col: str(area_id), name_col: str(area_name), "description": desc}])
     existing = pd.concat([existing, new_row], ignore_index=True)

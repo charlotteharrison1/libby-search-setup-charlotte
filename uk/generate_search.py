@@ -48,10 +48,10 @@ def build_prompt(row: pd.Series) -> str:
     return f"""
     You are an expert on the UK parliamentary constituencies.
     You are given a constituency name.
-    You are to list up to 5 of the most popularly used placenames (at least towns, city or city localities) which are in or are partly within the constituency.
+    You are to list up to 10 of the most popularly used placenames (at least towns, city or city localities) which are in or are partly within the constituency.
     For example, for a constituency such as Hallam you would respond with "Sheffield".
     Within London, don't respond with "London", instead respond with a list of the localities within London which are in the constituency.
-    If a place is not uniquely named in the uk and other places have similar names, add a broader location to the place name (e.g., "Faringdon London" or "Faringdon Oxfordshire")
+    If a place is not uniquely named in the uk and other places have similar names, add a broader location to the place name (e.g., "Farringdon London" or "Farringdon Oxfordshire")
     The constituency name is: {row['PCON24NM']}
 
     Respond and only respond with a list of places with the following format:
