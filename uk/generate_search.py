@@ -48,30 +48,37 @@ def build_prompt(row: pd.Series) -> str:
     return f"""
     You are an expert on the UK parliamentary constituencies.
     You are given a constituency name.
-    You are to list up to 10 of the most popularly used placenames (at least towns, city or city localities) which are in or are partly within the constituency.
-    For example, for a constituency such as Hallam you would respond with "Sheffield".
+    You are to list up to 25 of the most popularly used placenames (at least towns, city or city localities) which are in or are partly within the constituency.
+    For example, for a constituency such as Hallam you would respond with Sheffield in South Yorkshire.
     Within London, don't respond with "London", instead respond with a list of the localities within London which are in the constituency.
     If a place is not uniquely named in the uk and other places have similar names, add a broader location to the place name (e.g., "Farringdon London" or "Farringdon Oxfordshire")
     The constituency name is: {row['PCON24NM']}
 
-    Respond and only respond with a list of places with the following format:
+    Respond and only respond with a JSON list of objects with "place" and "county" keys:
 
-    ["place1","place2","place3",...]
+    [{{"place": "place1", "county": "county1"}}, {{"place": "place2", "county": "county2"}}, ...]
     """
 
 
-def _parse_place_list(value) -> list[str]:
-    """Parse the LLM's response into a list of place-name strings."""
-    if isinstance(value, list):
-        return [str(p).strip() for p in value if str(p).strip()]
+def _parse_place_list(value) -> list[dict]:
+    """Parse the LLM's response into a list of dicts with 'place' and 'county' keys."""
     if not isinstance(value, str) or not value.strip():
         return []
     text = value.strip()
     for parser in (json.loads, ast.literal_eval):
         try:
             parsed = parser(text)
-            if isinstance(parsed, list):
-                return [str(p).strip() for p in parsed if str(p).strip()]
+            if not isinstance(parsed, list) or not parsed:
+                continue
+            # New format: list of dicts with place/county keys
+            if isinstance(parsed[0], dict):
+                return [
+                    {"place": str(p.get("place", "")).strip(), "county": str(p.get("county", "")).strip()}
+                    for p in parsed
+                    if str(p.get("place", "")).strip()
+                ]
+            # Old format: plain list of strings — carry forward without county
+            return [{"place": str(p).strip(), "county": ""} for p in parsed if str(p).strip()]
         except (ValueError, SyntaxError):
             continue
     return []
@@ -86,6 +93,16 @@ def _would_clobber_scraped_data(path: Path) -> bool:
     except Exception:
         return False
     return "groups" in existing.columns and existing["groups"].notna().any()
+
+
+def _output_path_for(constituency_name: str | None, explicit: str | None) -> Path:
+    """Resolve the output path: explicit > constituency-named > master default."""
+    if explicit:
+        return Path(explicit)
+    if constituency_name:
+        slug = constituency_name.lower().replace(" ", "_").replace("&", "and")
+        return NEW_SCRAPE_PATH.parent / f"{slug}_search_targets.csv"
+    return NEW_SCRAPE_PATH
 
 
 def run(
@@ -117,15 +134,18 @@ def run(
         max_tokens=DEFAULT_MAX_TOKENS,
     )
 
-    df["place_name"] = df[RESPONSE_COLUMN].apply(_parse_place_list)
-    n_failed = int((df["place_name"].str.len() == 0).sum())
+    df["_parsed"] = df[RESPONSE_COLUMN].apply(_parse_place_list)
+    n_failed = int((df["_parsed"].str.len() == 0).sum())
     if n_failed:
         logger.warning("%d constituencies produced no parseable place list", n_failed)
 
-    exploded = df.explode("place_name").reset_index(drop=True)
-    exploded = exploded[exploded["place_name"].notna() & (exploded["place_name"] != "")].copy()
+    exploded = df.explode("_parsed").reset_index(drop=True)
+    exploded = exploded[exploded["_parsed"].apply(lambda x: isinstance(x, dict))].copy()
+    exploded["place_name"] = exploded["_parsed"].apply(lambda x: x["place"])
+    exploded["county"] = exploded["_parsed"].apply(lambda x: x["county"])
+    exploded = exploded.drop(columns=["_parsed"])
+    exploded = exploded[exploded["place_name"] != ""].copy()
 
-    # Mark rows as not-yet-scraped so the scraper knows what to do.
     exploded["processed"] = False
     exploded["groups"] = ""
 
@@ -140,14 +160,14 @@ def run(
 def main():
     parser = argparse.ArgumentParser(description="Generate UK constituency search targets")
     parser.add_argument("--constituency", default=None, help="Generate for a single constituency (PCON24NM)")
-    parser.add_argument("--output", default=str(NEW_SCRAPE_PATH), help="Output CSV path")
+    parser.add_argument("--output", default=None, help="Output CSV path (default: auto-named from constituency, or master file for full runs)")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model for place-name generation")
     parser.add_argument("--force", action="store_true", help="Overwrite even if the file has scraped 'groups' data")
     args = parser.parse_args()
 
     run(
         constituency_name=args.constituency,
-        output_path=Path(args.output),
+        output_path=_output_path_for(args.constituency, args.output),
         model=args.model,
         force=args.force,
     )
