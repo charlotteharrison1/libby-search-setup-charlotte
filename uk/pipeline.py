@@ -14,6 +14,7 @@ Test run (single constituency by name):
 import argparse
 import ast
 import logging
+import re
 import sys
 
 import pandas as pd
@@ -22,9 +23,13 @@ from libby_core import assessment, descriptions
 from uk import data_loading, geo, parsing
 from uk.settings import (
     DESCRIPTIONS_PATH,
+    DENSITIES_PATH,
+    GEOJSON_PATH,
     INTERMEDIATE_DIR,
     NEW_SCRAPE_PATH,
     OUTPUT_DIR,
+    PCON_MAPPING_PATH,
+    PREVIOUS_SCRAPE_PATH,
     REDO_GROUPS_PATH,
 )
 
@@ -174,6 +179,21 @@ def _combine_and_filter(
     return combined
 
 
+_BUY_SELL_PATTERN = re.compile(
+    r"\b(buy|sell|selling|sold|sale|for sale|marketplace|wanted|swap|swapping|"
+    r"freebie|freebies|free stuff|preloved|pre-loved|second.?hand|bargain)\b",
+    re.IGNORECASE,
+)
+
+
+def _drop_buy_sell(df: pd.DataFrame, name_col: str = "name") -> pd.DataFrame:
+    mask = df[name_col].astype(str).str.contains(_BUY_SELL_PATTERN, na=False)
+    dropped = int(mask.sum())
+    if dropped:
+        logger.info("  Dropped %d buy/sell groups", dropped)
+    return df[~mask].copy()
+
+
 # ── main ───────────────────────────────────────────────────────────────────
 
 def run(
@@ -184,10 +204,25 @@ def run(
     _merge_redo_groups_into_master()
     logger.info("Loading data …")
     df_new_exploded = data_loading.load_new_scrape()
-    df_previous = data_loading.load_previous_scrape()
-    pcon_map_df = data_loading.load_pcon_mapping()
-    densities_df = data_loading.load_densities()
-    gdf_pcon = data_loading.load_constituency_boundaries()
+
+    # PCON mapping — fall back to scrape data if file is missing
+    if PCON_MAPPING_PATH.exists():
+        pcon_map_df = data_loading.load_pcon_mapping()
+    else:
+        logger.info("PCON mapping file not found — deriving from scrape data")
+        pcon_map_df = df_new_exploded[["PCON24CD", "PCON24NM"]].drop_duplicates().reset_index(drop=True)
+
+    # Geo add-on files — all optional; skip the add-on if any are missing
+    geo_available = GEOJSON_PATH.exists() and DENSITIES_PATH.exists() and PREVIOUS_SCRAPE_PATH.exists()
+    if geo_available:
+        df_previous = data_loading.load_previous_scrape()
+        densities_df = data_loading.load_densities()
+        gdf_pcon = data_loading.load_constituency_boundaries()
+    else:
+        logger.info("Geo add-on files not found — skipping geographic add-on")
+        df_previous = pd.DataFrame()
+        densities_df = None
+        gdf_pcon = None
 
     all_codes = set(df_new_exploded["PCON24CD"].dropna().unique())
 
@@ -230,17 +265,24 @@ def run(
         logger.info("Processing: %s", pcon24nm)
 
         new_groups_c = new_groups[new_groups["PCON24CD"] == pcon24cd].copy()
-        addon_groups = geo.compute_geographic_addon(
-            df_previous=df_previous,
-            df_new_exploded=df_new_exploded,
-            gdf_pcon=gdf_pcon,
-            densities_df=densities_df,
-            constituency_codes={pcon24cd},
-            global_min_add_on=GLOBAL_MIN_ADD_ON,
-            global_max_add_on=GLOBAL_MAX_ADD_ON,
-        )
+        if geo_available:
+            addon_groups = geo.compute_geographic_addon(
+                df_previous=df_previous,
+                df_new_exploded=df_new_exploded,
+                gdf_pcon=gdf_pcon,
+                densities_df=densities_df,
+                constituency_codes={pcon24cd},
+                global_min_add_on=GLOBAL_MIN_ADD_ON,
+                global_max_add_on=GLOBAL_MAX_ADD_ON,
+            )
+        else:
+            addon_groups = pd.DataFrame()
 
         combined = _combine_and_filter(new_groups_c, addon_groups, pcon_map_df)
+        combined = _drop_buy_sell(combined)
+        combined = combined[
+            combined["posts_a_month"].isna() | (combined["posts_a_month"] >= 10)
+        ].copy()
 
         if stop_before_ai_assessment:
             out_path = OUTPUT_DIR / f"{pcon24nm}-intermediate.csv"

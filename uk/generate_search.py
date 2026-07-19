@@ -143,9 +143,11 @@ def run(
     exploded = exploded[exploded["_parsed"].apply(lambda x: isinstance(x, dict))].copy()
     exploded["place_name"] = exploded["_parsed"].apply(lambda x: x["place"])
     exploded["county"] = exploded["_parsed"].apply(lambda x: x["county"])
-    exploded = exploded.drop(columns=["_parsed"])
+    exploded = exploded.drop(columns=["_parsed", RESPONSE_COLUMN], errors="ignore")
     exploded = exploded[exploded["place_name"] != ""].copy()
 
+    exploded["search_string"] = exploded["place_name"] + ", " + exploded["county"]
+    exploded["scroll"] = 2
     exploded["processed"] = False
     exploded["groups"] = ""
 
