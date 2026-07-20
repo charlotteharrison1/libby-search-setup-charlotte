@@ -16,6 +16,7 @@ import ast
 import logging
 import re
 import sys
+from pathlib import Path
 
 import pandas as pd
 
@@ -199,11 +200,15 @@ def _drop_buy_sell(df: pd.DataFrame, name_col: str = "name") -> pd.DataFrame:
 def run(
     constituency_name: str | None = None,
     stop_before_ai_assessment: bool = False,
+    input_path: Path | None = None,
 ):
     # ── Phase 1: One-time setup ─────────────────────────────────────────────
-    _merge_redo_groups_into_master()
+    if input_path:
+        logger.info("Using input file: %s", input_path)
+    else:
+        _merge_redo_groups_into_master()
     logger.info("Loading data …")
-    df_new_exploded = data_loading.load_new_scrape()
+    df_new_exploded = data_loading.load_new_scrape(input_path or NEW_SCRAPE_PATH)
 
     # PCON mapping — fall back to scrape data if file is missing
     if PCON_MAPPING_PATH.exists():
@@ -398,6 +403,12 @@ def main():
         action="store_true",
         help="Run up to combining groups, then write {constituency}-intermediate.csv and exit before AI assessment.",
     )
+    parser.add_argument(
+        "--input",
+        type=str,
+        default=None,
+        help="Path to a scraped CSV file to process directly, instead of the master file.",
+    )
     args = parser.parse_args()
 
     if args.stop_before_ai_assessment and not args.constituency:
@@ -407,6 +418,7 @@ def main():
     run(
         constituency_name=args.constituency,
         stop_before_ai_assessment=args.stop_before_ai_assessment,
+        input_path=Path(args.input) if args.input else None,
     )
 
 
