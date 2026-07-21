@@ -27,7 +27,7 @@ Run from the **repo root**:
 python -m uk.generate_search --constituency "Finchley and Golders Green"
 ```
 
-Output: `uk/data/finchley_and_golders_green_search_targets.csv`
+Output: `uk/data/search_targets/finchley_and_golders_green_search_targets.csv`
 Contains one row per place name with `processed=False` and an empty `groups` column.
 
 To regenerate a file that already has scraped data (overwrites everything):
@@ -64,7 +64,7 @@ Once scraping is complete, retrieve the file:
 ./sync_scrape.sh pull "Finchley and Golders Green"
 ```
 
-This downloads the scraped file from `…/finchley_and_golders_green/data/` back to `uk/data/`.
+This downloads the scraped file from `…/finchley_and_golders_green/data/` back to `uk/data/scraped/`.
 
 ---
 
@@ -73,13 +73,13 @@ This downloads the scraped file from `…/finchley_and_golders_green/data/` back
 Run from the **repo root**, passing the scraped file directly:
 
 ```bash
-python -m uk.pipeline --input uk/data/finchley_and_golders_green_search_targets.csv
+python -m uk.pipeline --input uk/data/scraped/finchley_and_golders_green_search_targets.csv
 ```
 
 To inspect results before the AI assessment step (faster, no LLM calls):
 
 ```bash
-python -m uk.pipeline --input uk/data/finchley_and_golders_green_search_targets.csv --stop-before-ai-assessment --constituency "Finchley and Golders Green"
+python -m uk.pipeline --input uk/data/scraped/finchley_and_golders_green_search_targets.csv --stop-before-ai-assessment --constituency "Finchley and Golders Green"
 ```
 
 Output: `uk/output/<constituency>-run.csv`

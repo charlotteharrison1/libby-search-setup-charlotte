@@ -1,8 +1,12 @@
-pandas
-geopandas
-shapely
-numpy
-openai
-python-dotenv
-# US data-prep only (us/download_places.py):
-duckdb
+# Core dependencies
+pandas>=3.0.0
+geopandas>=1.1.0
+shapely>=2.1.0
+numpy>=2.4.0
+openai>=2.44.0
+python-dotenv>=1.1.0
+pydantic>=2.12.0
+pydantic-settings>=2.12.0
+
+# Optional: required for generate_search_overture.py (Overture Maps data download)
+# duckdb>=1.0.0

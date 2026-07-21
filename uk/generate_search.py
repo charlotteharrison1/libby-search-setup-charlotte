@@ -12,7 +12,7 @@ and sets ``processed=True``, and only then does ``pipeline.py`` process it.
 Run from the repository root as a module:
 
     python -m uk.generate_search                         # all constituencies
-    python -m uk.generate_search --constituency Aldershot
+    python -m uk.generate_search --constituency Midlovian
     python -m uk.generate_search --output uk/data/new_targets.csv
 
 By default it writes the master scrape file; to avoid clobbering scraped data it
@@ -30,7 +30,7 @@ from pathlib import Path
 import pandas as pd
 
 from libby_core import ai
-from uk.settings import CONSTITUENCIES_PATH, NEW_SCRAPE_PATH
+from uk.settings import CONSTITUENCIES_PATH, NEW_SCRAPE_PATH, SEARCH_TARGETS_DIR
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,13 +46,19 @@ RESPONSE_COLUMN = "list_of_towns_and_cities"
 
 def build_prompt(row: pd.Series) -> str:
     return f"""
-    You are an expert on the UK parliamentary constituencies.
-    You are given a constituency name.
-    You are to list up to 25 of the most popularly used placenames (at least towns, city or city localities) which are in or are partly within the constituency.
-    For example, for a constituency such as Hallam you would respond with Sheffield in South Yorkshire.
-    Within London, don't respond with "London", instead respond with a list of the localities within London which are in the constituency.
-    If a place is not uniquely named in the uk and other places have similar names, add a broader location to the place name (e.g., "Farringdon London" or "Farringdon Oxfordshire")
-    The constituency name is: {row['PCON24NM']}
+    You are an expert on UK places and communities.
+    Your task is to list up to 25 place names for the UK parliamentary constituency: {row['PCON24NM']}
+
+    These place names will be used to search Facebook for local community groups, so they must be names that local residents actually use to identify their area. Include a mix of:
+    - Neighbourhoods, villages, towns, and city localities within the constituency
+    - Well-known parks, commons, or green spaces that give their name to an area (e.g. "Clapham Common", "Hampstead Heath")
+    - Landmarks or institutions that define a local community (e.g. a famous church, high street, or market)
+
+    Rules:
+    - For London constituencies: never include "London" on its own. Use specific locality names (e.g. "Finchley", "Golders Green", "Temple Fortune").
+    - If a place name is not unique in the UK, qualify it (e.g. "Farringdon London", "Newport Shropshire").
+    - Prioritise names people actually use day-to-day over official or administrative names.
+    - Do not include the constituency name itself as a place.
 
     Respond and only respond with a JSON list of objects with "place" and "county" keys:
 
@@ -101,7 +107,7 @@ def _output_path_for(constituency_name: str | None, explicit: str | None) -> Pat
         return Path(explicit)
     if constituency_name:
         slug = constituency_name.lower().replace(" ", "_").replace("&", "and")
-        return NEW_SCRAPE_PATH.parent / f"{slug}_search_targets.csv"
+        return SEARCH_TARGETS_DIR / f"{slug}_search_targets.csv"
     return NEW_SCRAPE_PATH
 
 

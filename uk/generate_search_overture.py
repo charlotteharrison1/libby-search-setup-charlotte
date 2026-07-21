@@ -36,7 +36,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from uk.settings import CONSTITUENCIES_PATH, NEW_SCRAPE_PATH
+from uk.settings import CONSTITUENCIES_PATH, NEW_SCRAPE_PATH, OVERTURE_DIR
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,9 +45,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-OVERTURE_RELEASE = "2026-05-20.0"
+OVERTURE_RELEASE = "2026-06-17.0"
 UK_BBOX = (-8.0, 49.5, 2.0, 61.0)
-UK_PLACES_CACHE = Path(__file__).resolve().parent / "data" / "uk_overture_places.parquet"
+UK_PLACES_CACHE = Path(__file__).resolve().parent / "data" / "reference" / "uk_overture_places.parquet"
 DEFAULT_TOP_N = 5
 DEFAULT_RADIUS_KM = 15.0
 
@@ -92,11 +92,7 @@ def download_uk_places(out_parquet: Path) -> pd.DataFrame:
 
     logger.info("Querying Overture places for UK bbox — this may take several minutes…")
     con = duckdb.connect()
-    con.execute(
-        "INSTALL spatial; LOAD spatial; "
-        "INSTALL httpfs; LOAD httpfs; "
-        "SET s3_region='us-west-2';"
-    )
+    con.execute("LOAD spatial; SET s3_region='us-west-2';")
     df = con.execute(f"""
         SELECT
             addresses[1].locality AS locality,
@@ -219,12 +215,12 @@ def main():
         help=f"Search radius from constituency centroid in km (default: {DEFAULT_RADIUS_KM})",
     )
     parser.add_argument(
-        "--output", default=str(NEW_SCRAPE_PATH),
-        help="Output CSV path",
+        "--output", default=None,
+        help="Output CSV path (default: uk/data/search_targets/<slug>_search_targets.csv)",
     )
     parser.add_argument(
         "--force", action="store_true",
-        help="Overwrite even if the master file has scraped 'groups' data",
+        help="Overwrite even if the file has scraped 'groups' data",
     )
     parser.add_argument(
         "--rebuild-cache", action="store_true",
@@ -232,11 +228,19 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.output:
+        output_path = Path(args.output)
+    elif args.constituency:
+        slug = args.constituency.lower().replace(" ", "_").replace("&", "and")
+        output_path = OVERTURE_DIR / f"{slug}_search_targets.csv"
+    else:
+        output_path = OVERTURE_DIR / "master_search_targets.csv"
+
     run(
         constituency_name=args.constituency,
         top_n=args.top_n,
         radius_km=args.radius_km,
-        output_path=Path(args.output),
+        output_path=output_path,
         force=args.force,
         rebuild_cache=args.rebuild_cache,
     )
