@@ -38,10 +38,15 @@ python -m uk.generate_search --constituency "Finchley and Golders Green" --force
 
 ---
 
-### 2. Scrape (external — not this repo)
+### 2. Upload to scraper device
 
-Hand the generated CSV to the Facebook scraper (`libby_download`).
-The scraper must be configured with:
+```bash
+./sync_scrape.sh push "Finchley and Golders Green"
+```
+
+This creates `libby:/home/pub/libby_download/finchley_and_golders_green/` (if needed) and SCPs the file there.
+
+Then configure and run the external Facebook scraper (`libby_download`) with:
 
 ```json
 {
@@ -52,6 +57,14 @@ The scraper must be configured with:
 ```
 
 The scraper fills in the `groups` column and sets `processed=True` for each row.
+
+Once scraping is complete, retrieve the file:
+
+```bash
+./sync_scrape.sh pull "Finchley and Golders Green"
+```
+
+This downloads the scraped file from `…/finchley_and_golders_green/data/` back to `uk/data/`.
 
 ---
 
