@@ -1,7 +1,91 @@
 # Libby Search Setup
 
 Find and assess local community **Facebook groups** for a geographic area, then
-produce a curated list per area. Two pipelines share one core:
+produce a curated list per area.
+
+---
+
+## Quick start (UK)
+
+### 0. Prerequisites
+
+```bash
+pip install -e .
+# Add to .env in repo root:
+# OPEN_ROUTER_KEY=sk-or-...
+```
+
+Requires `uk/data/constituencies_2024.csv` (FID, PCON24CD, PCON24NM, LONG, LAT, …).
+
+---
+
+### 1. Generate search targets
+
+Run from the **repo root**:
+
+```bash
+python -m uk.generate_search --constituency "Finchley and Golders Green"
+```
+
+Output: `uk/data/finchley_and_golders_green_search_targets.csv`
+Contains one row per place name with `processed=False` and an empty `groups` column.
+
+To regenerate a file that already has scraped data (overwrites everything):
+
+```bash
+python -m uk.generate_search --constituency "Finchley and Golders Green" --force
+```
+
+---
+
+### 2. Scrape (external — not this repo)
+
+Hand the generated CSV to the Facebook scraper (`libby_download`).
+The scraper must be configured with:
+
+```json
+{
+  "master_file_name": "path/to/finchley_and_golders_green_search_targets.csv",
+  "search_column": "search_string",
+  "scroll_column": "scroll"
+}
+```
+
+The scraper fills in the `groups` column and sets `processed=True` for each row.
+
+---
+
+### 3. Process scraped results
+
+Run from the **repo root**, passing the scraped file directly:
+
+```bash
+python -m uk.pipeline --input uk/data/finchley_and_golders_green_search_targets.csv
+```
+
+To inspect results before the AI assessment step (faster, no LLM calls):
+
+```bash
+python -m uk.pipeline --input uk/data/finchley_and_golders_green_search_targets.csv --stop-before-ai-assessment --constituency "Finchley and Golders Green"
+```
+
+Output: `uk/output/<constituency>-run.csv`
+
+---
+
+### Full multi-constituency run
+
+```bash
+python -m uk.generate_search                  # all 650 constituencies
+# [scrape externally]
+python -m uk.pipeline                         # all → uk/output/output.csv
+```
+
+---
+
+## Repo layout
+
+Two pipelines share one core:
 
 - **`uk/`** — UK 2024 parliamentary constituencies.
 - **`us/`** — US congressional districts.
