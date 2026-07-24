@@ -326,7 +326,7 @@ def run(
                 combined["first_assessment"] = assessed["first_assessment"].values
 
         final_c = combined[
-            (combined["first_assessment"] != "No") & (combined["members"] > 100)
+            (combined["first_assessment"] != "No") & (combined["members"] > 50)
         ].copy()
         final_c = final_c.sort_values(
             by=["PCON24CD", "members", "posts_a_month"],
@@ -355,7 +355,17 @@ def run(
         logger.warning("No Intermediate CSVs found; writing empty output")
         final_df = pd.DataFrame()
     else:
-        parts = [pd.read_csv(p, encoding="latin-1", on_bad_lines="skip") for p in intermediate_files]
+        parts = []
+        for p in intermediate_files:
+            part = pd.read_csv(p, encoding="latin-1", on_bad_lines="skip")
+            parts.append(part)
+            # Save a named file per constituency
+            if "PCON24NM" in part.columns and not part.empty:
+                name = part["PCON24NM"].iloc[0]
+                named_path = OUTPUT_DIR / f"groups_{name}.csv"
+                part.to_csv(named_path, index=False, encoding="utf-8", errors="surrogatepass")
+                logger.info("  Saved %d rows → %s", len(part), named_path)
+
         final_df = pd.concat(parts, axis=0, ignore_index=True)
         final_df = final_df.sort_values(
             by=["PCON24CD", "members", "posts_a_month"],
@@ -365,7 +375,7 @@ def run(
         final_df = final_df.drop_duplicates(subset=["url"])
 
     if constituency_name:
-        run_path = OUTPUT_DIR / f"{constituency_name}-run.csv"
+        run_path = OUTPUT_DIR / f"groups_{constituency_name}.csv"
         final_df.to_csv(run_path, index=False, encoding="utf-8", errors="surrogatepass")
         logger.info("Saved %d rows → %s", len(final_df), run_path)
     else:

@@ -17,16 +17,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_ASSESSMENT_MODEL = "google/gemini-3-flash-preview"
 
 DEFAULT_PROMPT_TEMPLATE = (
-    "You are a geopolitical analyst. You are to look at this Facebook group "
-    "name='{group_name}' and assess if this group is likely used by people "
-    "who live in or have an interest in the following {area_kind}: "
-    "<area>{area_description}</area>. "
-    "Examples might include community groups, items for sale, events, etc. "
-    "If the group is linked to a large city neighbouring but not overlapping the area, mark no. "
-    "Answer with one of the following three responses 'Yes|Unsure|No'. "
-    "You are to mark unsure if there is any US spelling, or if the group is linked to a large city "
-    "from the US/Canada/Australia/New Zealand. "
-    "Only answer with the single word response."
+    "You are assessing whether a Facebook group is genuinely local to a specific area. "
+    "The area is: <area>{area_description}</area> ({area_kind}). "
+    "The Facebook group name is: '{group_name}'. "
+    "Answer 'Yes' only if the group is clearly local to that specific area — "
+    "for example a neighbourhood group, local events, local sport, local services, or local community. "
+    "Answer 'No' if the group covers a broader region, county, or country rather than the specific area "
+    "(e.g. an Essex-wide group for a Clacton constituency, or a Scotland-wide group for a Midlothian constituency). "
+    "Answer 'No' if the group is linked to a different area entirely, or is international. "
+    "Answer 'Unsure' if the group name gives ambiguous signals about its geographic scope. "
+    "When in doubt, prefer 'Unsure' over 'No' — these results undergo human review. "
+    "Only answer with the single word: 'Yes', 'Unsure', or 'No'."
 )
 
 

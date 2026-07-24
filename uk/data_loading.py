@@ -19,7 +19,15 @@ def load_new_scrape(path=NEW_SCRAPE_PATH) -> pd.DataFrame:
     and explode the groups column into one row per group."""
     df = pd.read_csv(path)
     df = df[df.processed].copy()
-    df["groups_list"] = df.groups.apply(lambda x: eval(x))
+    def _parse_groups(x):
+        if not isinstance(x, str) or not x.strip():
+            return []
+        try:
+            return eval(x)
+        except Exception:
+            return []
+
+    df["groups_list"] = df.groups.apply(_parse_groups)
 
     df_exploded = df.explode("groups_list").reset_index(drop=True)
     group_keys_df = df_exploded["groups_list"].apply(pd.Series)
