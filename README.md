@@ -5,6 +5,39 @@ produce a curated list per area.
 
 ---
 
+## Index — running the scripts
+
+| Script | Command | What it does |
+|---|---|---|
+| **Prep** (generate + push, one seat) | `python -m uk.generate_search --constituency "Aldershot"` then `./sync_scrape.sh push "Aldershot"` | Builds the search-targets CSV for one constituency, then uploads it to the `libby` scraper device. |
+| **Prep** (generate + push, batch) | `./batch_pipeline.sh prep "Aldershot" "Bolsover" "Clacton"` or `./batch_pipeline.sh prep --file constituencies.txt` | Same as above for a whole list at once. Skips constituencies already generated/pushed; rerun freely to top up a growing list. Add `--force` to redo everyone. |
+| **Push** (upload only) | `./sync_scrape.sh push "Aldershot"` | Uploads an already-generated search-targets file to `libby:/home/pub/libby_download/<slug>/`. |
+| **Pull** (download, one seat) | `./sync_scrape.sh pull "Aldershot"` | Downloads the scraped file back from `libby` into `uk/data/scraped/`, once the external scraper has finished. |
+| **Pull** (download, batch) | `./batch_pipeline.sh pull "Aldershot" "Bolsover" "Clacton"` or `./batch_pipeline.sh pull --file constituencies.txt` | Same as above for a whole list; a seat whose scrape isn't finished just fails that one — rerun later. |
+| **Sync** (pull + process + stage, batch) | `./batch_pipeline.sh sync "Aldershot" "Bolsover" "Clacton"` or `./batch_pipeline.sh sync --file constituencies.txt` | Pulls only constituencies with *new* data on `libby`, runs `uk.pipeline` on them, and stages the finished `groups_*.csv` into the `Clacton-etc/inputs/` folder. Spends real OpenRouter (and no Data365) calls. Add `--force` to reprocess unchanged data. |
+| **Process** (manual, one seat) | `python -m uk.pipeline --input uk/data/scraped/<slug>_search_targets.csv` | Parses → geo-expands → AI-assesses a scraped file into `uk/output/<constituency>-run.csv`. Use `--stop-before-ai-assessment` to skip the (billable) LLM step while inspecting results. |
+
+`push`/`pull` also accept `--all` (every file currently in `uk/data/search_targets/`).
+See [Quick start](#quick-start-uk) below for the full walkthrough, or the
+[Repo layout](#repo-layout) section for how the pieces fit together.
+
+---
+
+## Index — remote scripts (on the `libby` device)
+
+Source of truth for these lives in `remote_scripts/` in this repo; the
+deployed copies run from `/home/pub/libby_download/` on `libby`. Re-deploy
+after editing with `scp remote_scripts/<script> libby:/home/pub/libby_download/`.
+
+| Script | Command | What it does |
+|---|---|---|
+| **Set scrape target** | `ssh libby` then `cd /home/pub/libby_download && ./set_scrape_target.sh <slug>` | Points `clacton.json` at a given constituency's pushed search-targets file (rewrites `master_file_name`/`output_directory` only). Refuses slugs that haven't been pushed yet — `--force` overrides. |
+| **Pick next scrape target** | `ssh libby` then `cd /home/pub/libby_download && ./pick_next_scrape_target.sh` | Finds the oldest-pushed constituency that hasn't been scraped yet (skipping whatever's currently active) and hands it to `set_scrape_target.sh`. Add `--dry-run` to just see what it would pick. |
+
+See [step 2 of the quick start](#2-upload-to-scraper-device) for these in context.
+
+---
+
 ## Quick start (UK)
 
 ### 0. Prerequisites
