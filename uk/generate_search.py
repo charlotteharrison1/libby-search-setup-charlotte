@@ -24,6 +24,7 @@ import argparse
 import ast
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -90,6 +91,14 @@ def _parse_place_list(value) -> list[dict]:
     return []
 
 
+def slugify(name: str) -> str:
+    """Filesystem/remote-path-safe slug for a constituency name. Single source
+    of truth — ``sync_scrape.sh`` shells out to this so push/pull always agree
+    with the filename this module writes."""
+    slug = name.lower().replace(" ", "_").replace("&", "and")
+    return re.sub(r"[^a-z0-9_]", "", slug)
+
+
 def _would_clobber_scraped_data(path: Path) -> bool:
     """True if *path* exists and already has a non-empty ``groups`` column."""
     if not path.exists():
@@ -106,8 +115,7 @@ def _output_path_for(constituency_name: str | None, explicit: str | None) -> Pat
     if explicit:
         return Path(explicit)
     if constituency_name:
-        slug = constituency_name.lower().replace(" ", "_").replace("&", "and")
-        return SEARCH_TARGETS_DIR / f"{slug}_search_targets.csv"
+        return SEARCH_TARGETS_DIR / f"{slugify(constituency_name)}_search_targets.csv"
     return NEW_SCRAPE_PATH
 
 
@@ -171,7 +179,12 @@ def main():
     parser.add_argument("--output", default=None, help="Output CSV path (default: auto-named from constituency, or master file for full runs)")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model for place-name generation")
     parser.add_argument("--force", action="store_true", help="Overwrite even if the file has scraped 'groups' data")
+    parser.add_argument("--print-slug", default=None, metavar="NAME", help="Print the filename slug for NAME and exit (used by sync_scrape.sh)")
     args = parser.parse_args()
+
+    if args.print_slug is not None:
+        print(slugify(args.print_slug))
+        return
 
     run(
         constituency_name=args.constituency,

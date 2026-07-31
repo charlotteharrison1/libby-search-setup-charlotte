@@ -58,6 +58,26 @@ Then configure and run the external Facebook scraper (`libby_download`) with:
 
 The scraper fills in the `groups` column and sets `processed=True` for each row.
 
+Instead of hand-editing that JSON before every scrape, `set_scrape_target.sh`
+(deployed on libby at `/home/pub/libby_download/set_scrape_target.sh` —
+source of truth kept in this repo under `remote_scripts/`) rewrites just the
+`master_file_name` / `output_directory` fields for you:
+
+```bash
+ssh libby
+cd /home/pub/libby_download
+./set_scrape_target.sh bolsover        # slug, not the full constituency name
+```
+
+It refuses to point the scraper at a slug that hasn't actually been pushed
+yet (`--force` overrides that check), and leaves every other field in
+`clacton.json` — and the scraper itself — untouched. If you edit
+`remote_scripts/set_scrape_target.sh` here, redeploy with:
+
+```bash
+scp remote_scripts/set_scrape_target.sh libby:/home/pub/libby_download/
+```
+
 Once scraping is complete, retrieve the file:
 
 ```bash
@@ -65,6 +85,72 @@ Once scraping is complete, retrieve the file:
 ```
 
 This downloads the scraped file from `…/finchley_and_golders_green/data/` back to `uk/data/scraped/`.
+
+#### Running a list of constituencies at once
+
+`batch_pipeline.sh` runs steps 1 and 2 for several constituencies in one go,
+instead of repeating `generate_search` + `sync_scrape.sh push` by hand for
+each one:
+
+```bash
+./batch_pipeline.sh prep "Aldershot" "Bolsover" "Clacton"
+# or, one constituency name per line in a file:
+./batch_pipeline.sh prep --file constituencies.txt
+```
+
+This generates search targets and pushes every constituency that generated
+successfully; failures are reported at the end rather than stopping the batch.
+
+`prep` tracks what it's already done, so you can keep adding constituencies
+to a running list and rerun the same command — it will only generate ones
+that don't have a search-targets file yet, and only push ones whose file has
+changed since the last successful push (recorded in
+`uk/data/search_targets/.push_manifest`). Pass `--force` to regenerate and
+re-push everything in the list regardless.
+
+Then, as before, run the scraper on the device yourself for each one. Once
+scraping is done, pull them all back:
+
+```bash
+./batch_pipeline.sh pull "Aldershot" "Bolsover" "Clacton"
+# or:
+./batch_pipeline.sh pull --file constituencies.txt
+```
+
+A constituency whose scrape isn't finished yet just fails that one pull —
+rerun the same command later to pick up the rest.
+
+To go all the way from "libby has new data" to a finished, staged output file
+in one step, use `sync` instead of `pull`:
+
+```bash
+./batch_pipeline.sh sync "Aldershot" "Bolsover" "Clacton"
+# or:
+./batch_pipeline.sh sync --file constituencies.txt
+```
+
+For each constituency, `sync`:
+
+1. Checks (via SSH, no download) whether the scraped file on libby has
+   changed since the last successful sync — tracked in
+   `uk/data/scraped/.pull_manifest`. Not-ready or unchanged constituencies
+   are skipped.
+2. Pulls it, then runs `uk.pipeline` on just that constituency (forcing
+   reprocessing even if an `Intermediate/<code>.csv` already exists from a
+   previous run — otherwise the fresh pull would be silently ignored).
+3. Moves the resulting `uk/output/groups_{name}.csv` into
+   `/Users/charlotte/vs_code/Clacton-etc/inputs/` as a staging area.
+
+`inputs/` is *not* wired into `Clacton-etc`'s `data_collection.py` — that
+script only ever reads `Clacton-etc/groups/` (hardcoded), and running it
+fires real billable Data365 API calls. Moving a file from `inputs/` into
+`groups/` is a deliberate manual step, by design, so nothing reaches the
+billable script without a human looking at it first. Pass `--force` to
+reprocess and re-stage a constituency even if libby's copy hasn't changed.
+
+Each `sync` run also spends real OpenRouter LLM calls during AI assessment
+(same as any `uk.pipeline` run) — that part isn't free either, just less
+directly billable than Data365.
 
 ---
 
