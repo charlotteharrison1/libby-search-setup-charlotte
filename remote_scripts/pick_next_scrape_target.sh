@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Lives on the libby device at /home/pub/libby_download/pick_next_scrape_target.sh.
 # (Source of truth is kept here in the repo — re-deploy after editing:
-#   scp remote_scripts/pick_next_scrape_target.sh libby:/home/pub/libby_download/
 # )
 #
 # Scans every pushed constituency folder next to this script (a "constituency
