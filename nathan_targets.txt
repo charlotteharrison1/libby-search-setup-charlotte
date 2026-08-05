@@ -2,8 +2,7 @@ Erewash
 Nottingham North and Kimberley
 Bassetlaw
 Amber Valley
-Corby and East northants
-Knowsley
+Corby and East Northamptonshire
 Lincoln
 Filton and Bradley Stoke
 Cardiff North
@@ -15,3 +14,7 @@ Derby South
 Northampton South
 Pontefract, Castleford and Knottingley
 Tipton and Wednesbury
+Vale of Glamorgan
+Hyndburn
+West Bromwich
+Norwich North
