@@ -11,9 +11,14 @@ same schema uk/generate_search.py produces — so the rest of the pipeline
 (sync_scrape.sh push, the external scraper, uk.pipeline --input ...) needs no
 changes at all.
 
-    python -m uk.generate_search_ward --wards-file uk/data/reference/adhoc_wards.csv
+A rerun skips any ward already present in the output file (no per-ward LLM
+re-spend just because you added a new ward to wards_file) — pass --force to
+regenerate everyone regardless.
 
-See uk/data/reference/adhoc_wards.csv.example for the input format.
+    python -m uk.generate_search_ward
+    python -m uk.generate_search_ward --wards-file uk/data/search_targets/adhoc_wards.csv
+
+See uk/data/search_targets/adhoc_wards.csv.example for the input format.
 """
 
 import argparse
@@ -27,7 +32,8 @@ from pathlib import Path
 import pandas as pd
 
 from libby_core import ai
-from uk.settings import CONSTITUENCIES_PATH, SEARCH_TARGETS_DIR
+from uk import ward_geodata
+from uk.settings import CONSTITUENCIES_PATH, DEFAULT_WARDS_FILE, WARD_BOUNDARIES_PATH, WARD_SEARCH_TARGETS_DIR
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +50,7 @@ DEFAULT_MAX_TOKENS = 20_000  # GPT-5 spends tokens on hidden reasoning + the
 # :online search round trip before any visible content — generate_search.py
 # uses the same budget for the same model; too low and message.content comes
 # back None (looks like a crash, is actually silent truncation).
-DEFAULT_OUTPUT = SEARCH_TARGETS_DIR / "adhoc_wards_search_targets.csv"
+DEFAULT_OUTPUT = WARD_SEARCH_TARGETS_DIR / "adhoc_wards_search_targets.csv"
 
 VALID_TYPES = {"highstreet", "residential_road", "place_of_worship", "park", "school", "other_landmark"}
 SCROLL_BY_TYPE = {"highstreet": 3}  # everything else falls back to DEFAULT_SCROLL
@@ -136,12 +142,41 @@ def _would_clobber_scraped_data(path: Path) -> bool:
     return "groups" in existing.columns and existing["groups"].notna().any()
 
 
+def _load_existing_rows_by_ward(path: Path) -> dict[tuple[str, str], list[dict]]:
+    """Group output_path's existing rows by (ward_name, local_authority),
+    casefolded, so a rerun can skip regenerating a ward already in the file.
+    Empty dict if the file doesn't exist yet or has no 'county' column."""
+    if not Path(path).exists():
+        return {}
+    try:
+        existing = pd.read_csv(path)
+    except Exception:
+        return {}
+    if "county" not in existing.columns:
+        return {}
+
+    by_ward: dict[tuple[str, str], list[dict]] = {}
+    for county, group in existing.groupby("county"):
+        ward_name, local_authority = ward_geodata.split_county(county)
+        key = (ward_name.casefold(), local_authority.casefold())
+        by_ward[key] = group.to_dict("records")
+    return by_ward
+
+
+def _merge_items(geo_items: list[dict], llm_items: list[dict]) -> list[dict]:
+    """Union geodata + LLM items, preferring the geodata (verified, "high"
+    confidence) version when both found the same name."""
+    geo_names = {g["name"].casefold() for g in geo_items}
+    return geo_items + [item for item in llm_items if item["name"].casefold() not in geo_names]
+
+
 def run(
     wards_file: Path,
     output_path: Path = DEFAULT_OUTPUT,
     model: str = DEFAULT_MODEL,
     min_confidence: str = "low",
     force: bool = False,
+    boundaries_path: Path | None = WARD_BOUNDARIES_PATH,
 ) -> pd.DataFrame:
     if not force and _would_clobber_scraped_data(output_path):
         logger.error(
@@ -161,11 +196,29 @@ def run(
     constituencies_df = pd.read_csv(CONSTITUENCIES_PATH)
     min_rank = CONFIDENCE_RANK[min_confidence]
 
+    boundaries_gdf = None
+    if boundaries_path:
+        if Path(boundaries_path).exists():
+            boundaries_gdf = ward_geodata.load_ward_boundaries(boundaries_path)
+        else:
+            logger.warning("Ward boundaries file not found at %s — skipping geodata, LLM-only", boundaries_path)
+
+    # Skip wards already present in output_path from a previous run — no
+    # per-ward memory otherwise, so appending new wards to wards_file would
+    # silently regenerate (and re-spend LLM calls on) every ward already done.
+    existing_by_ward = {} if force else _load_existing_rows_by_ward(output_path)
+
     all_rows = []
     for _, ward in wards_df.iterrows():
         ward_name = str(ward["ward_name"]).strip()
         constituency_name = str(ward["constituency_name"]).strip()
         local_authority = str(ward.get("local_authority", "") or "").strip()
+
+        existing_key = (ward_name.casefold(), local_authority.casefold())
+        if existing_key in existing_by_ward:
+            logger.info("Skipping (already generated): %s — pass --force to regenerate", ward_name)
+            all_rows.extend(existing_by_ward[existing_key])
+            continue
 
         match = constituencies_df[constituencies_df["PCON24NM"] == constituency_name]
         if match.empty:
@@ -176,32 +229,44 @@ def run(
             continue
         constituency_row = match.iloc[0].to_dict()
 
-        logger.info("Querying: %s (%s)", ward_name, constituency_name)
+        geo_items = []
+        if boundaries_gdf is not None:
+            geometry = ward_geodata.find_ward_geometry(boundaries_gdf, ward_name, local_authority)
+            if geometry is not None:
+                logger.info("Querying Overpass for: %s", ward_name)
+                geo_items = ward_geodata.query_overpass_within(geometry)
+
+        logger.info("Querying LLM for: %s (%s)", ward_name, constituency_name)
         prompt = build_prompt(ward_name, constituency_name, local_authority)
         try:
             reply = ai.get_llm_text_response(prompt, model=model, max_tokens=DEFAULT_MAX_TOKENS)
+            llm_items = _parse_ward_items(reply)
         except Exception as e:
             logger.error("LLM call failed for '%s': %s", ward_name, e)
-            continue
+            llm_items = []
 
-        items = _parse_ward_items(reply)
+        items = _merge_items(geo_items, llm_items)
         if not items:
-            logger.warning("No parseable items for '%s'", ward_name)
+            logger.warning("No items found for '%s' (geodata or LLM)", ward_name)
             continue
 
-        county = f"{ward_name}, {local_authority}" if local_authority else ward_name
+        county = ward_geodata.encode_county(ward_name, local_authority)
 
         for item in items:
             rank = CONFIDENCE_RANK[item["confidence"]]
             flag = "" if rank >= min_rank else "  [dropped: below min-confidence]"
-            logger.info("  [%s/%s] %s%s", item["type"], item["confidence"], item["name"], flag)
+            source = "geo" if item in geo_items else "llm"
+            logger.info("  [%s/%s/%s] %s%s", source, item["type"], item["confidence"], item["name"], flag)
             if rank < min_rank:
                 continue
 
             row = dict(constituency_row)
             row["place_name"] = item["name"]
             row["county"] = county
-            row["search_string"] = f"{item['name']}, {county}"
+            # Human-readable comma form here — only the 'county' field above
+            # needs the safe " | " delimiter, since it's the one parsed back
+            # apart later; this is just literal search text.
+            row["search_string"] = f"{item['name']}, {ward_name}" + (f", {local_authority}" if local_authority else "")
             row["scroll"] = SCROLL_BY_TYPE.get(item["type"], DEFAULT_SCROLL)
             row["processed"] = False
             row["groups"] = ""
@@ -222,11 +287,13 @@ def run(
 
 def main():
     parser = argparse.ArgumentParser(description="Generate search targets for a handful of named wards")
-    parser.add_argument("--wards-file", required=True, help="CSV with ward_name, constituency_name, [local_authority] columns")
+    parser.add_argument("--wards-file", default=str(DEFAULT_WARDS_FILE), help=f"CSV with ward_name, constituency_name, [local_authority] columns (default: {DEFAULT_WARDS_FILE})")
     parser.add_argument("--output", default=None, help=f"Output CSV path (default: {DEFAULT_OUTPUT})")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model (default: web-search-grounded)")
     parser.add_argument("--min-confidence", choices=["low", "medium", "high"], default="low", help="Drop items below this confidence (default: low, i.e. keep everything)")
-    parser.add_argument("--force", action="store_true", help="Overwrite even if the output already has scraped 'groups' data")
+    parser.add_argument("--force", action="store_true", help="Regenerate every ward (ignoring the already-generated skip) and overwrite even if the output already has scraped 'groups' data")
+    parser.add_argument("--boundaries", default=str(WARD_BOUNDARIES_PATH), help=f"Ward boundary shapefile path (default: {WARD_BOUNDARIES_PATH})")
+    parser.add_argument("--skip-geodata", action="store_true", help="Skip the boundary/Overpass lookup, LLM only")
     args = parser.parse_args()
 
     run(
@@ -235,6 +302,7 @@ def main():
         model=args.model,
         min_confidence=args.min_confidence,
         force=args.force,
+        boundaries_path=None if args.skip_geodata else Path(args.boundaries),
     )
 
 

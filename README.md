@@ -17,9 +17,29 @@ produce a curated list per area.
 | **Sync** (pull + process + stage, batch) | `./batch_pipeline.sh sync "Aldershot" "Bolsover" "Clacton"` or `./batch_pipeline.sh sync --file constituencies.txt` | Pulls only constituencies with *new* data on `libby`, runs `uk.pipeline` on them, and stages the finished `groups_*.csv` into the `Clacton-etc/inputs/` folder. Spends real OpenRouter (and no Data365) calls. Add `--force` to reprocess unchanged data. |
 | **Process** (manual, one seat) | `python -m uk.pipeline --input uk/data/scraped/<slug>_search_targets.csv` | Parses → geo-expands → AI-assesses a scraped file into `uk/output/<constituency>-run.csv`. Use `--stop-before-ai-assessment` to skip the (billable) LLM step while inspecting results. |
 
-`push`/`pull` also accept `--all` (every file currently in `uk/data/search_targets/`).
+`push`/`pull` also accept `--all` (every constituency *and* ward file), or
+`--constituencies` / `--wards` to sweep just one or the other.
 See [Quick start](#quick-start-uk) below for the full walkthrough, or the
 [Repo layout](#repo-layout) section for how the pieces fit together.
+
+---
+
+## Index — running the ward scripts
+
+A separate, smaller set of tools for researching a handful of specific
+electoral wards rather than a whole constituency — e.g. when a constituency's
+own search targets are missing a smaller or recently-redrawn area. Not wired
+into `batch_pipeline.sh`; run these directly.
+
+| Script | Command | What it does |
+|---|---|---|
+| **Prep** (generate + push) | `python -m uk.generate_search_ward` then `./sync_scrape.sh push --wards` | Reads `uk/data/search_targets/adhoc_wards.csv` (one row per ward: `ward_name`, `constituency_name`, `local_authority`), asks a web-search-grounded LLM for highstreets/roads/landmarks per ward (plus real OpenStreetMap data if `uk/data/reference/wards/` has a boundary shapefile), and writes `uk/data/search_targets/wards/adhoc_wards_search_targets.csv`. Then uploads it. |
+| **Push** (upload only) | `./sync_scrape.sh push --wards` or `./sync_scrape.sh push "adhoc_wards"` | Uploads the ward search-targets file, same as any constituency push. |
+| **Pull** (download) | `./sync_scrape.sh pull --wards` or `./sync_scrape.sh pull "adhoc_wards"` | Downloads the scraped file back into `uk/data/scraped/wards/`. |
+| **Raw dump** (no AI cost) | `python -m uk.raw_groups --input uk/data/scraped/wards/adhoc_wards_search_targets.csv` | Explodes every group out of the scraped file, unfiltered — no constituency logic, no AI assessment. Useful for a quick look before spending on the real process step. |
+| **Process** | `python -m uk.pipeline_ward` | Aggregates, filters, and AI-assesses each ward separately (no geo add-on, no PCON-based caching — see the module docstring for why), writing `uk/output/wards/ward_groups_<ward>.csv` per ward plus a combined `ward_output.csv`. Use `--stop-before-ai-assessment` to inspect first. |
+
+See `uk/data/search_targets/adhoc_wards.csv.example` for the input format.
 
 ---
 
@@ -35,6 +55,54 @@ after editing with `scp remote_scripts/<script> libby:/home/pub/libby_download/`
 | **Pick next scrape target** | `ssh libby` then `cd /home/pub/libby_download && ./pick_next_scrape_target.sh` | Finds the oldest-pushed constituency that hasn't been scraped yet (skipping whatever's currently active) and hands it to `set_scrape_target.sh`. Add `--dry-run` to just see what it would pick. |
 
 See [step 2 of the quick start](#2-upload-to-scraper-device) for these in context.
+
+---
+
+## Where files live (UK)
+
+Constituency and ward files are kept in separate, parallel locations at every
+stage — a bare folder is the constituency side; the `wards/` subfolder (or,
+for the two hand-edited input lists, just living alongside the constituency
+ones) is the ward side.
+
+```
+uk/
+├── data/
+│   ├── reference/                     ← static, don't edit
+│   │   ├── constituencies_2024.csv        (constituency lookup — used by both pipelines)
+│   │   ├── *.geojson / densities / PCON mapping   (constituency geo add-on only)
+│   │   └── wards/
+│   │       └── WD_MAY_2026_UK_BFE.*       (ward boundary shapefile)
+│   │
+│   ├── search_targets/                ← hand-edited inputs + generated search-targets CSVs
+│   │   ├── adhoc_wards.csv                (ward input list — edit this)
+│   │   ├── nathan_targets.txt              (constituency batch list — edit this)
+│   │   ├── <slug>_search_targets.csv      (generated, one per constituency)
+│   │   └── wards/
+│   │       └── adhoc_wards_search_targets.csv  (generated, all wards combined)
+│   │
+│   ├── scraped/                       ← pulled back from the libby device
+│   │   ├── <slug>_search_targets.csv
+│   │   ├── master_constituency_place_data_file.csv
+│   │   └── wards/
+│   │       └── adhoc_wards_search_targets.csv
+│   │
+│   ├── descriptions.csv               ← AI area-description cache (constituency)
+│   └── ward_descriptions.csv          ← AI area-description cache (ward)
+│
+└── output/                            ← final, filtered, AI-assessed results
+    ├── groups_<Constituency Name>.csv
+    ├── output.csv                         (all constituencies combined)
+    ├── intermediate/<PCON24CD>.csv        (per-constituency resumability cache)
+    └── wards/
+        ├── ward_groups_<ward>.csv
+        └── ward_output.csv                (all wards combined)
+```
+
+`uk.pipeline` (constituency) and `uk.pipeline_ward` (ward) never write into
+each other's folders — see the [Index — running the ward
+scripts](#index--running-the-ward-scripts) table above for which script
+produces which file.
 
 ---
 
