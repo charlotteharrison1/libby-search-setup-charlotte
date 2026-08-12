@@ -31,6 +31,12 @@ uk/data/scraped/wards/ — one ward per file, same as before, just now one
 call handles all of them instead of needing one combined file. Pass --input
 to process just a single file instead.
 
+Final output per ward is written as uk/output/wards/groups_{ward name}.csv —
+same filename convention (groups_{area}.csv, raw name, not slugified) and
+the exact same columns as uk/pipeline.py's constituency output (see
+FINAL_COLUMNS below), so it drops straight into Clacton-etc/groups/ next to
+a constituency's own groups_{Name}.csv with no reformatting.
+
 Run from the repository root as a module:
 
     python -m uk.pipeline_ward
@@ -59,6 +65,16 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+# Exact column set/order uk/pipeline.py writes to groups_{Name}.csv — matching
+# this exactly (not just "close enough") is what lets a ward's output file
+# drop straight into Clacton-etc/groups/ as a groups_{area}.csv, same as a
+# constituency's, with no reformatting step and nothing for data_collection.py
+# to silently default via its .get(..., "") column reads.
+FINAL_COLUMNS = [
+    "PCON24CD", "name", "url", "public_y_n", "members", "posts_a_month",
+    "locality", "locality_name", "PCON24NM", "first_assessment",
+]
 
 # Same quality bar as uk/pipeline.py, but lower — a genuinely relevant
 # hyperlocal ward group ("Cricklewood Residents") will naturally have far
@@ -100,6 +116,8 @@ def _aggregate_ward_groups(df_exploded: pd.DataFrame, ward_id: str) -> pd.DataFr
         coi.groupby("url", dropna=False)
         .apply(
             lambda g: pd.Series({
+                "PCON24CD": g["PCON24CD"].iloc[0] if "PCON24CD" in g.columns else "",
+                "PCON24NM": g["PCON24NM"].iloc[0] if "PCON24NM" in g.columns else "",
                 "name": g["name"].iloc[0] if "name" in g.columns else "",
                 "url": g.name,
                 "public_y_n": bool(pd.to_numeric(g["public_y_n"], errors="coerce").fillna(0).max()),
@@ -170,9 +188,12 @@ def _process_file(
             combined["posts_a_month"].isna() | (combined["posts_a_month"] >= min_posts_a_month)
         ].copy()
 
-        out_name = f"ward_groups_{slugify(ward_name)}"
+        # Same filename convention as uk/pipeline.py's constituency output
+        # (groups_{Name}.csv, raw name — not slugified) and same "found
+        # directly, no geo add-on" locality value ("C") — see module
+        # docstring for why wards skip the add-on that "A"/"L"/"R" mean.
         if stop_before_ai_assessment:
-            out_path = WARD_OUTPUT_DIR / f"{out_name}-intermediate.csv"
+            out_path = WARD_OUTPUT_DIR / f"{ward_name}-intermediate.csv"
             combined.to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
             logger.info("  Saved %d rows (pre-assessment) → %s", len(combined), out_path)
             continue
@@ -200,10 +221,11 @@ def _process_file(
             (combined["first_assessment"] != "No") & (combined["members"].fillna(0) >= min_members)
         ].copy()
         final = final.sort_values(by=["members", "posts_a_month"], ascending=False, na_position="last")
-        final["ward_name"] = ward_name
-        final["local_authority"] = local_authority
+        final["locality"] = "C"
+        final["locality_name"] = ""
+        final = final[FINAL_COLUMNS]
 
-        out_path = WARD_OUTPUT_DIR / f"{out_name}.csv"
+        out_path = WARD_OUTPUT_DIR / f"groups_{ward_name}.csv"
         final.to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
         logger.info("  Saved %d rows → %s", len(final), out_path)
         all_final.append(final)
