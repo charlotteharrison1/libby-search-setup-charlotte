@@ -18,7 +18,7 @@ import logging
 
 import geopandas as gpd
 import requests
-from shapely.geometry import Point
+from shapely.geometry import LineString, Point
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +35,19 @@ OVERPASS_TIMEOUT_S = 90
 # Maps OSM tag combinations to the same category vocabulary
 # generate_search_ward.py's LLM prompt uses (VALID_TYPES there).
 #
-# highway=residential/living_street/unclassified are now included (local
-# roads) for more granular coverage — every named local street OSM has
-# mapped, not just the LLM's "biggest" judgment call. This trades precision
-# for recall: expect noisier/longer output than the highstreet-only set, to
-# be reviewed same as everything else before pushing to the scraper.
+# highway=residential/living_street/unclassified are included (local roads),
+# but length-filtered to the biggest ones only (BIG_RESIDENTIAL_MIN_LENGTH_M
+# below) — OSM tags every named street this way with no notability signal,
+# so length is the proxy for "big enough to be a neighbourhood identifier."
+# Balances the earlier two extremes: excluding local roads entirely (missed
+# real streets), and including every one unfiltered (mostly noise).
 #
 # Still deliberately NOT querying amenity=marketplace: it picks up individual
 # market-stall businesses rather than an actual market landmark. Hotels/pubs
 # are excluded too — private businesses, not public landmarks.
 _HIGHSTREET_HIGHWAYS = {"primary", "secondary", "tertiary", "pedestrian"}
 _LOCAL_ROAD_HIGHWAYS = {"residential", "living_street", "unclassified"}
+BIG_RESIDENTIAL_MIN_LENGTH_M = 300
 _AMENITY_TO_TYPE = {
     "place_of_worship": "place_of_worship",
     "school": "school",
@@ -154,8 +156,10 @@ def query_overpass_within(polygon) -> list[dict]:
       node["tourism"="artwork"]["name"]({bbox});
       way["tourism"="artwork"]["name"]({bbox});
     );
-    out center tags;
+    out geom tags;
     """
+    # "out geom" (not "out center") because the residential-road length
+    # filter below needs each way's full shape, not just a point.
 
     headers = {"User-Agent": "libby-search-setup-ward-script/1.0 (one-off ward research, contact: repo owner)"}
     try:
@@ -174,14 +178,29 @@ def query_overpass_within(polygon) -> list[dict]:
         if not name:
             continue
 
-        lat = el.get("lat") or el.get("center", {}).get("lat")
-        lon = el.get("lon") or el.get("center", {}).get("lon")
-        if lat is None or lon is None or not polygon.contains(Point(lon, lat)):
+        geometry_coords = el.get("geometry")  # list of {"lat", "lon"} for ways
+        if el.get("lat") is not None:  # node
+            point = Point(el["lon"], el["lat"])
+            line = None
+        elif geometry_coords:  # way
+            line = LineString([(c["lon"], c["lat"]) for c in geometry_coords])
+            point = line.centroid
+        else:
+            continue
+
+        if not polygon.contains(point):
             continue
 
         item_type = _classify_element(tags)
         if item_type is None:
             continue
+
+        if item_type == "residential_road":
+            if line is None:
+                continue
+            length_m = gpd.GeoSeries([line], crs="EPSG:4326").to_crs("EPSG:27700").length.iloc[0]
+            if length_m < BIG_RESIDENTIAL_MIN_LENGTH_M:
+                continue
 
         key = (name.casefold(), item_type)
         if key in seen:

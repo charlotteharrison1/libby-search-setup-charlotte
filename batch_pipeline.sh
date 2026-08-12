@@ -52,9 +52,11 @@ PUSH_MANIFEST="$SEARCH_TARGETS_DIR/.push_manifest"
 PULL_MANIFEST="$SCRAPED_DIR/.pull_manifest"
 INPUTS_DIR="${CLACTON_INPUTS_DIR:-/Users/charlotte/vs_code/Clacton-etc/inputs}"
 
-# Must match sync_scrape.sh.
+# Must match sync_scrape.sh. batch_pipeline.sh only ever deals with
+# constituencies (never wards), which live under constituencies/ on the
+# device — see the "one folder per constituency, nested" migration.
 DEVICE="libby"
-REMOTE_BASE="/home/pub/libby_download"
+REMOTE_BASE="/home/pub/libby_download/constituencies"
 
 # --- manifests: slug<TAB>sha256, one line per constituency -----------------
 # Shared by push (prep) and remote-data (sync) tracking; pass the manifest

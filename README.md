@@ -11,7 +11,7 @@ produce a curated list per area.
 |---|---|---|
 | **Prep** (generate + push, one seat) | `python -m uk.generate_search --constituency "Aldershot"` then `./sync_scrape.sh push "Aldershot"` | Builds the search-targets CSV for one constituency, then uploads it to the `libby` scraper device. |
 | **Prep** (generate + push, batch) | `./batch_pipeline.sh prep "Aldershot" "Bolsover" "Clacton"` or `./batch_pipeline.sh prep --file constituencies.txt` | Same as above for a whole list at once. Skips constituencies already generated/pushed; rerun freely to top up a growing list. Add `--force` to redo everyone. |
-| **Push** (upload only) | `./sync_scrape.sh push "Aldershot"` | Uploads an already-generated search-targets file to `libby:/home/pub/libby_download/<slug>/`. |
+| **Push** (upload only) | `./sync_scrape.sh push "Aldershot"` | Uploads an already-generated search-targets file to `libby:/home/pub/libby_download/constituencies/<slug>/`. |
 | **Pull** (download, one seat) | `./sync_scrape.sh pull "Aldershot"` | Downloads the scraped file back from `libby` into `uk/data/scraped/`, once the external scraper has finished. |
 | **Pull** (download, batch) | `./batch_pipeline.sh pull "Aldershot" "Bolsover" "Clacton"` or `./batch_pipeline.sh pull --file constituencies.txt` | Same as above for a whole list; a seat whose scrape isn't finished just fails that one — rerun later. |
 | **Sync** (pull + process + stage, batch) | `./batch_pipeline.sh sync "Aldershot" "Bolsover" "Clacton"` or `./batch_pipeline.sh sync --file constituencies.txt` | Pulls only constituencies with *new* data on `libby`, runs `uk.pipeline` on them, and stages the finished `groups_*.csv` into the `Clacton-etc/inputs/` folder. Spends real OpenRouter (and no Data365) calls. Add `--force` to reprocess unchanged data. |
@@ -31,13 +31,19 @@ electoral wards rather than a whole constituency — e.g. when a constituency's
 own search targets are missing a smaller or recently-redrawn area. Not wired
 into `batch_pipeline.sh`; run these directly.
 
+Each ward gets its own search-targets file, named the same way a
+constituency's is (`slugify(ward_name)`) — mirroring the constituency
+pattern deliberately, so pushing a newly-added ward can't silently overwrite
+another ward's already-scraped remote data (they push to separate remote
+folders, just like constituencies do).
+
 | Script | Command | What it does |
 |---|---|---|
-| **Prep** (generate + push) | `python -m uk.generate_search_ward` then `./sync_scrape.sh push --wards` | Reads `uk/data/search_targets/adhoc_wards.csv` (one row per ward: `ward_name`, `constituency_name`, `local_authority`), asks a web-search-grounded LLM for highstreets/roads/landmarks per ward (plus real OpenStreetMap data if `uk/data/reference/wards/` has a boundary shapefile), and writes `uk/data/search_targets/wards/adhoc_wards_search_targets.csv`. Then uploads it. |
-| **Push** (upload only) | `./sync_scrape.sh push --wards` or `./sync_scrape.sh push "adhoc_wards"` | Uploads the ward search-targets file, same as any constituency push. |
-| **Pull** (download) | `./sync_scrape.sh pull --wards` or `./sync_scrape.sh pull "adhoc_wards"` | Downloads the scraped file back into `uk/data/scraped/wards/`. |
-| **Raw dump** (no AI cost) | `python -m uk.raw_groups --input uk/data/scraped/wards/adhoc_wards_search_targets.csv` | Explodes every group out of the scraped file, unfiltered — no constituency logic, no AI assessment. Useful for a quick look before spending on the real process step. |
-| **Process** | `python -m uk.pipeline_ward` | Aggregates, filters, and AI-assesses each ward separately (no geo add-on, no PCON-based caching — see the module docstring for why), writing `uk/output/wards/ward_groups_<ward>.csv` per ward plus a combined `ward_output.csv`. Use `--stop-before-ai-assessment` to inspect first. |
+| **Prep** (generate + push) | `python -m uk.generate_search_ward` then `./sync_scrape.sh push --wards` | Reads `uk/data/search_targets/adhoc_wards.csv` (one row per ward: `ward_name`, `constituency_name`, `local_authority`), asks a web-search-grounded LLM for colloquial names/landmarks per ward (plus real OpenStreetMap data — highstreets and the biggest residential roads — if `uk/data/reference/wards/` has a boundary shapefile), and writes one file per ward to `uk/data/search_targets/wards/`. Skips any ward whose file already exists — pass `--force` to regenerate. Then pushes every ward file. |
+| **Push** (upload only) | `./sync_scrape.sh push --wards` (all ward files) or `./sync_scrape.sh push "<ward name>"` (one) | Uploads each ward's file to its own remote folder, same as any constituency push. |
+| **Pull** (download) | `./sync_scrape.sh pull --wards` or `./sync_scrape.sh pull "<ward name>"` | Downloads each ward's scraped file back into `uk/data/scraped/wards/`. |
+| **Raw dump** (no AI cost) | `python -m uk.raw_groups --input uk/data/scraped/wards/<ward>_search_targets.csv` | Explodes every group out of one scraped ward file, unfiltered — no AI assessment. Useful for a quick look before spending on the real process step. |
+| **Process** | `python -m uk.pipeline_ward` | Processes every scraped ward file in `uk/data/scraped/wards/` (or pass `--input <file>` for just one) — aggregates, filters, and AI-assesses each ward separately (no geo add-on, no PCON-based caching — see the module docstring for why), writing `uk/output/wards/ward_groups_<ward>.csv` per ward plus a combined `ward_output.csv`. Use `--stop-before-ai-assessment` to inspect first, or `--force` to regenerate a ward's cached AI area-description instead of reusing it. |
 
 See `uk/data/search_targets/adhoc_wards.csv.example` for the input format.
 
@@ -51,8 +57,8 @@ after editing with `scp remote_scripts/<script> libby:/home/pub/libby_download/`
 
 | Script | Command | What it does |
 |---|---|---|
-| **Set scrape target** | `ssh libby` then `cd /home/pub/libby_download && ./set_scrape_target.sh <slug>` | Points `clacton.json` at a given constituency's pushed search-targets file (rewrites `master_file_name`/`output_directory` only). Refuses slugs that haven't been pushed yet — `--force` overrides. |
-| **Pick next scrape target** | `ssh libby` then `cd /home/pub/libby_download && ./pick_next_scrape_target.sh` | Finds the oldest-pushed constituency that hasn't been scraped yet (skipping whatever's currently active) and hands it to `set_scrape_target.sh`. Add `--dry-run` to just see what it would pick. |
+| **Set scrape target** | `ssh libby` then `cd /home/pub/libby_download && ./set_scrape_target.sh <slug>` | Points `clacton.json` at a given constituency's or ward's pushed search-targets file (rewrites `master_file_name`/`output_directory` only). Checks `constituencies/<slug>/` first, then `wards/<slug>/`. Refuses slugs that haven't been pushed yet — `--force` overrides. |
+| **Pick next scrape target** | `ssh libby` then `cd /home/pub/libby_download && ./pick_next_scrape_target.sh` | Finds the oldest-pushed constituency or ward that hasn't been scraped yet (skipping whatever's currently active), scanning both `constituencies/*/` and `wards/*/`, and hands it to `set_scrape_target.sh`. Add `--dry-run` to just see what it would pick. |
 
 See [step 2 of the quick start](#2-upload-to-scraper-device) for these in context.
 
@@ -79,13 +85,13 @@ uk/
 │   │   ├── nathan_targets.txt              (constituency batch list — edit this)
 │   │   ├── <slug>_search_targets.csv      (generated, one per constituency)
 │   │   └── wards/
-│   │       └── adhoc_wards_search_targets.csv  (generated, all wards combined)
+│   │       └── <ward slug>_search_targets.csv  (generated, one file PER WARD)
 │   │
 │   ├── scraped/                       ← pulled back from the libby device
 │   │   ├── <slug>_search_targets.csv
 │   │   ├── master_constituency_place_data_file.csv
 │   │   └── wards/
-│   │       └── adhoc_wards_search_targets.csv
+│   │       └── <ward slug>_search_targets.csv  (one file per ward, pulled separately)
 │   │
 │   ├── descriptions.csv               ← AI area-description cache (constituency)
 │   └── ward_descriptions.csv          ← AI area-description cache (ward)
@@ -145,7 +151,7 @@ python -m uk.generate_search --constituency "Finchley and Golders Green" --force
 ./sync_scrape.sh push "Finchley and Golders Green"
 ```
 
-This creates `libby:/home/pub/libby_download/finchley_and_golders_green/` (if needed) and SCPs the file there.
+This creates `libby:/home/pub/libby_download/constituencies/finchley_and_golders_green/` (if needed) and SCPs the file there. (Wards push to `libby:/home/pub/libby_download/wards/<ward-slug>/` instead — see [Index — running the ward scripts](#index--running-the-ward-scripts).)
 
 Then configure and run the external Facebook scraper (`libby_download`) with:
 
@@ -385,7 +391,6 @@ python -m uk.pipeline --constituency "..." --stop-before-ai-assessment
 python -m us.pipeline --stop-before-ai-assessment
 ```
 
-See **`uk/README.md`** and **`us/README.md`** for inputs, outputs, and details.
 
 ## Tests
 

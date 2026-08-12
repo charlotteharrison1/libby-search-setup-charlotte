@@ -108,11 +108,9 @@ for CONSTITUENCY in "${CONSTITUENCIES[@]}"; do
     CONSTITUENCY_FILE="$LOCAL_TARGETS/${SLUG}_search_targets.csv"
 
     if [[ "$CATEGORY" == "wards" ]]; then
-        LOCAL_TARGET_FILE="$WARD_FILE"
-        LOCAL_SCRAPED_FILE="$LOCAL_SCRAPED_WARDS/${SLUG}_search_targets.csv"
+        RESOLVED="wards"
     elif [[ "$CATEGORY" == "constituencies" ]]; then
-        LOCAL_TARGET_FILE="$CONSTITUENCY_FILE"
-        LOCAL_SCRAPED_FILE="$LOCAL_SCRAPED/${SLUG}_search_targets.csv"
+        RESOLVED="constituencies"
     elif [[ -f "$WARD_FILE" && -f "$CONSTITUENCY_FILE" ]]; then
         echo "!! '$CONSTITUENCY' (slug '$SLUG') matches a file in both search_targets/ and search_targets/wards/ — ambiguous. Disambiguate with:" >&2
         echo "     $0 $ACTION --wards \"$CONSTITUENCY\"" >&2
@@ -120,13 +118,20 @@ for CONSTITUENCY in "${CONSTITUENCIES[@]}"; do
         FAILED+=("$CONSTITUENCY")
         continue
     elif [[ -f "$WARD_FILE" ]]; then
+        RESOLVED="wards"
+    else
+        RESOLVED="constituencies"
+    fi
+
+    if [[ "$RESOLVED" == "wards" ]]; then
         LOCAL_TARGET_FILE="$WARD_FILE"
         LOCAL_SCRAPED_FILE="$LOCAL_SCRAPED_WARDS/${SLUG}_search_targets.csv"
+        REMOTE_DIR="$REMOTE_BASE/wards/$SLUG"
     else
         LOCAL_TARGET_FILE="$CONSTITUENCY_FILE"
         LOCAL_SCRAPED_FILE="$LOCAL_SCRAPED/${SLUG}_search_targets.csv"
+        REMOTE_DIR="$REMOTE_BASE/constituencies/$SLUG"
     fi
-    REMOTE_DIR="$REMOTE_BASE/$SLUG"
 
     case "$ACTION" in
       push)
@@ -137,7 +142,7 @@ for CONSTITUENCY in "${CONSTITUENCIES[@]}"; do
         fi
         echo "=== push: $CONSTITUENCY ==="
         echo "Creating remote directory (if needed): $DEVICE:$REMOTE_DIR"
-        if ! ssh "$DEVICE" "test -d '$REMOTE_DIR' || mkdir '$REMOTE_DIR'"; then
+        if ! ssh "$DEVICE" "mkdir -p '$REMOTE_DIR'"; then
             echo "!! failed to create remote dir for: $CONSTITUENCY" >&2
             FAILED+=("$CONSTITUENCY")
             continue

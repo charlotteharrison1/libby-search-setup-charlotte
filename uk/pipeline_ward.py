@@ -25,10 +25,17 @@ splits that back out to group and label results per ward. The delimiter is
 " | ", not a comma — ward names can themselves contain a comma (e.g. "Harden,
 Goscote & Ryecroft"), which a comma-based split would cut in the wrong place.
 
+generate_search_ward.py writes one file per ward (mirroring the constituency
+pattern), so by default this processes every scraped file it finds in
+uk/data/scraped/wards/ — one ward per file, same as before, just now one
+call handles all of them instead of needing one combined file. Pass --input
+to process just a single file instead.
+
 Run from the repository root as a module:
 
-    python -m uk.pipeline_ward --input uk/data/scraped/wards/adhoc_wards_search_targets.csv
-    python -m uk.pipeline_ward --input ... --stop-before-ai-assessment
+    python -m uk.pipeline_ward
+    python -m uk.pipeline_ward --input uk/data/scraped/wards/harden_goscote_and_ryecroft_search_targets.csv
+    python -m uk.pipeline_ward --stop-before-ai-assessment
 """
 
 import argparse
@@ -106,17 +113,36 @@ def _aggregate_ward_groups(df_exploded: pd.DataFrame, ward_id: str) -> pd.DataFr
     return agg
 
 
-def run(
+def _clear_cached_description(ward_id: str, path: Path) -> None:
+    """Drop ward_id's row from the description cache, if present, so the next
+    ensure_description() call regenerates instead of reusing a stale one."""
+    if not Path(path).exists():
+        return
+    try:
+        existing = pd.read_csv(path, dtype=str)
+    except Exception:
+        return
+    if "area_id" not in existing.columns:
+        return
+    remaining = existing[existing["area_id"] != str(ward_id)]
+    if len(remaining) != len(existing):
+        remaining.to_csv(path, index=False)
+
+
+def _process_file(
     input_path: Path,
-    stop_before_ai_assessment: bool = False,
-    min_members: int = DEFAULT_MIN_MEMBERS,
-    min_posts_a_month: float = DEFAULT_MIN_POSTS_A_MONTH,
-) -> pd.DataFrame:
+    stop_before_ai_assessment: bool,
+    min_members: int,
+    min_posts_a_month: float,
+    force_descriptions: bool,
+) -> list[pd.DataFrame]:
+    """Process one scraped ward file. Returns the final per-ward DataFrames
+    it wrote (empty list if stop_before_ai_assessment, or nothing survived)."""
     logger.info("Loading: %s", input_path)
     df_exploded = data_loading.load_new_scrape(input_path)
     if df_exploded.empty:
-        logger.error("No processed/scraped rows found in %s", input_path)
-        sys.exit(1)
+        logger.warning("No processed/scraped rows found in %s — skipping", input_path)
+        return []
 
     df_exploded = _parse_details_on_exploded(df_exploded)
 
@@ -155,6 +181,9 @@ def run(
             logger.info("  Nothing left to assess for %s", ward_name)
             continue
 
+        if force_descriptions:
+            _clear_cached_description(ward_id, WARD_DESCRIPTIONS_PATH)
+
         desc = descriptions.ensure_description(
             area_id=ward_id,
             area_name=f"{ward_name}, {local_authority}" if local_authority else ward_name,
@@ -179,6 +208,34 @@ def run(
         logger.info("  Saved %d rows → %s", len(final), out_path)
         all_final.append(final)
 
+    return all_final
+
+
+def run(
+    input_paths: list[Path] | Path | None = None,
+    stop_before_ai_assessment: bool = False,
+    min_members: int = DEFAULT_MIN_MEMBERS,
+    min_posts_a_month: float = DEFAULT_MIN_POSTS_A_MONTH,
+    force_descriptions: bool = False,
+) -> pd.DataFrame:
+    """Process one or more scraped ward files (default: every file in
+    WARD_SCRAPED_DIR — generate_search_ward.py writes one per ward) and
+    write a combined ward_output.csv across all of them."""
+    if input_paths is None:
+        input_paths = sorted(WARD_SCRAPED_DIR.glob("*_search_targets.csv"))
+        if not input_paths:
+            logger.error("No scraped files found in %s", WARD_SCRAPED_DIR)
+            sys.exit(1)
+        logger.info("Found %d scraped ward file(s) in %s", len(input_paths), WARD_SCRAPED_DIR)
+    elif isinstance(input_paths, (str, Path)):
+        input_paths = [Path(input_paths)]
+
+    all_final = []
+    for path in input_paths:
+        all_final.extend(_process_file(
+            Path(path), stop_before_ai_assessment, min_members, min_posts_a_month, force_descriptions,
+        ))
+
     if stop_before_ai_assessment or not all_final:
         return pd.DataFrame()
 
@@ -190,19 +247,20 @@ def run(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Process a scraped ad-hoc ward CSV into a filtered, AI-assessed group list")
-    default_input = WARD_SCRAPED_DIR / "adhoc_wards_search_targets.csv"
-    parser.add_argument("--input", default=str(default_input), help=f"Scraped search-targets CSV (from generate_search_ward.py, after sync_scrape.sh pull) (default: {default_input})")
+    parser = argparse.ArgumentParser(description="Process scraped ward file(s) into a filtered, AI-assessed group list")
+    parser.add_argument("--input", default=None, help=f"Process just this one scraped file, instead of every file in {WARD_SCRAPED_DIR}")
     parser.add_argument("--stop-before-ai-assessment", action="store_true", help="Write pre-assessment intermediate CSVs per ward and exit before AI assessment")
     parser.add_argument("--min-members", type=int, default=DEFAULT_MIN_MEMBERS, help=f"Minimum member count to keep a group (default: {DEFAULT_MIN_MEMBERS})")
     parser.add_argument("--min-posts-a-month", type=float, default=DEFAULT_MIN_POSTS_A_MONTH, help=f"Minimum posts/month to keep a group (default: {DEFAULT_MIN_POSTS_A_MONTH})")
+    parser.add_argument("--force", action="store_true", help="Regenerate each ward's cached AI description instead of reusing what's in ward_descriptions.csv")
     args = parser.parse_args()
 
     run(
-        input_path=Path(args.input),
+        input_paths=Path(args.input) if args.input else None,
         stop_before_ai_assessment=args.stop_before_ai_assessment,
         min_members=args.min_members,
         min_posts_a_month=args.min_posts_a_month,
+        force_descriptions=args.force,
     )
 
 

@@ -4,15 +4,26 @@ instead of a full constituency.
 
 This is NOT wired into batch_pipeline.sh or the documented constituency
 workflow — it's a bespoke tool for running a few named wards by hand. Input is
-a small hand-written CSV of (ward, constituency, local authority); for each
-ward it asks a web-search-grounded LLM for highstreets, notable residential
-roads, places of worship, parks, and schools, then writes rows in the exact
-same schema uk/generate_search.py produces — so the rest of the pipeline
-(sync_scrape.sh push, the external scraper, uk.pipeline --input ...) needs no
-changes at all.
+a small hand-written CSV of (ward, constituency, local authority). Two
+sources combine per ward, split by what each is actually good at:
 
-A rerun skips any ward already present in the output file (no per-ward LLM
-re-spend just because you added a new ward to wards_file) — pass --force to
+- ward_geodata.py queries OpenStreetMap (via Overpass) for highstreets and
+  the biggest residential roads (length-filtered — real, verified data, but
+  no sense of "would someone name a Facebook group after this street").
+- A web-search-grounded LLM is asked only for colloquial/informal area names
+  and landmarks people might personally anchor a community group around —
+  the judgment call OSM tags can't make.
+
+Each ward gets its OWN search-targets file — one row per Overpass/LLM item,
+one file per ward, named the same way generate_search.py names a
+constituency's file (slugify(ward_name)). This mirrors the constituency
+pattern deliberately: sync_scrape.sh pushes each ward to its own remote
+folder, so pushing a newly-added ward never touches (and can't silently
+overwrite the scraped progress of) a ward already pushed and scraped — which
+a single shared file/folder for all wards could not guarantee.
+
+A rerun skips any ward whose file already exists (no per-ward LLM re-spend
+just because you added a new ward to wards_file) — pass --force to
 regenerate everyone regardless.
 
     python -m uk.generate_search_ward
@@ -26,13 +37,13 @@ import ast
 import json
 import logging
 import re
-import sys
 from pathlib import Path
 
 import pandas as pd
 
 from libby_core import ai
 from uk import ward_geodata
+from uk.generate_search import slugify
 from uk.settings import CONSTITUENCIES_PATH, DEFAULT_WARDS_FILE, WARD_BOUNDARIES_PATH, WARD_SEARCH_TARGETS_DIR
 
 logging.basicConfig(
@@ -50,9 +61,11 @@ DEFAULT_MAX_TOKENS = 20_000  # GPT-5 spends tokens on hidden reasoning + the
 # :online search round trip before any visible content — generate_search.py
 # uses the same budget for the same model; too low and message.content comes
 # back None (looks like a crash, is actually silent truncation).
-DEFAULT_OUTPUT = WARD_SEARCH_TARGETS_DIR / "adhoc_wards_search_targets.csv"
 
-VALID_TYPES = {"highstreet", "residential_road", "place_of_worship", "park", "school", "other_landmark"}
+# The LLM is only asked for these — "highstreet"/"residential_road" are
+# geo-sourced only now (ward_geodata.py), not requested from the LLM, though
+# still valid on rows the geodata step produces.
+VALID_TYPES = {"colloquial_name", "place_of_worship", "park", "school", "other_landmark"}
 SCROLL_BY_TYPE = {"highstreet": 3}  # everything else falls back to DEFAULT_SCROLL
 DEFAULT_SCROLL = 2
 CONFIDENCE_RANK = {"low": 0, "medium": 1, "high": 2}
@@ -67,33 +80,35 @@ def build_prompt(ward_name: str, constituency_name: str, local_authority: str) -
     return f"""
     You are researching {where}.
 
-    Search for real, current information about this specific ward. List places
-    that local residents would plausibly search for on Facebook to find a
-    community group, in these categories:
+    We are trying to find real, existing Facebook community groups for this
+    ward. Facebook groups get built around things people anchor their sense
+    of place to — not every street or building has one, only places that
+    give an area its identity. Roads and shopping streets are covered
+    separately; focus only on these two categories:
 
-    - High streets or shopping streets (the main commercial street(s) in the ward)
-    - Named residential roads or streets that are locally well-known (not every
-      street — only ones a resident might use as a neighbourhood identifier)
-    - Places of worship of any faith (churches, mosques, temples, synagogues, etc.)
-    - Parks or other named green spaces
-    - Schools (state or independent)
-    - Anything else locally distinctive that residents might identify their
-      area by or search for on Facebook — a notable hotel or pub, a piece of
-      public art or statue, a market, a community centre, a well-known local
-      landmark or building. Do not force an answer here if nothing stands
-      out — only include something genuinely notable, not a generic filler.
+    - Colloquial or informal names for this ward or parts of it — nicknames,
+      sub-areas, or names locals actually use day-to-day that might not
+      appear on an official map. Skip this if the ward has no informal name
+      distinct from its official one.
+    - Landmarks residents might genuinely identify with or name a community
+      group after — a place of worship, a school, a park or green space, a
+      community centre, a notable piece of public art, a well-known local
+      building. The test is "would someone anchor a Facebook group around
+      this," not "is this a real building in the ward." Do not force an
+      answer if nothing stands out — only include something genuinely
+      notable, not generic filler.
 
     Rules:
-    - Only include real places you can verify exist in this ward. Do not invent
-      plausible-sounding names.
-    - If you are not fully certain a place is correct, still include it but mark
-      it "low" confidence rather than omitting it.
+    - Only include real places/names you can verify exist in this ward. Do
+      not invent plausible-sounding ones.
+    - If you are not fully certain something is correct, still include it but
+      mark it "low" confidence rather than omitting it.
     - Use the names local residents actually use, not official/administrative
       names where they differ.
     - Do not include the ward or constituency name itself as an item.
 
     Respond and only respond with a JSON list of objects with "name", "type" (one of
-    "highstreet", "residential_road", "place_of_worship", "park", "school",
+    "colloquial_name", "place_of_worship", "park", "school",
     "other_landmark"), and "confidence" ("high", "medium", or "low") keys:
 
     [{{"name": "...", "type": "...", "confidence": "..."}}, ...]
@@ -142,27 +157,6 @@ def _would_clobber_scraped_data(path: Path) -> bool:
     return "groups" in existing.columns and existing["groups"].notna().any()
 
 
-def _load_existing_rows_by_ward(path: Path) -> dict[tuple[str, str], list[dict]]:
-    """Group output_path's existing rows by (ward_name, local_authority),
-    casefolded, so a rerun can skip regenerating a ward already in the file.
-    Empty dict if the file doesn't exist yet or has no 'county' column."""
-    if not Path(path).exists():
-        return {}
-    try:
-        existing = pd.read_csv(path)
-    except Exception:
-        return {}
-    if "county" not in existing.columns:
-        return {}
-
-    by_ward: dict[tuple[str, str], list[dict]] = {}
-    for county, group in existing.groupby("county"):
-        ward_name, local_authority = ward_geodata.split_county(county)
-        key = (ward_name.casefold(), local_authority.casefold())
-        by_ward[key] = group.to_dict("records")
-    return by_ward
-
-
 def _merge_items(geo_items: list[dict], llm_items: list[dict]) -> list[dict]:
     """Union geodata + LLM items, preferring the geodata (verified, "high"
     confidence) version when both found the same name."""
@@ -172,24 +166,19 @@ def _merge_items(geo_items: list[dict], llm_items: list[dict]) -> list[dict]:
 
 def run(
     wards_file: Path,
-    output_path: Path = DEFAULT_OUTPUT,
     model: str = DEFAULT_MODEL,
     min_confidence: str = "low",
     force: bool = False,
     boundaries_path: Path | None = WARD_BOUNDARIES_PATH,
-) -> pd.DataFrame:
-    if not force and _would_clobber_scraped_data(output_path):
-        logger.error(
-            "%s already contains scraped 'groups' data. Refusing to overwrite; "
-            "pass --force or --output to write elsewhere.", output_path,
-        )
-        sys.exit(1)
-
+) -> dict[str, list[str]]:
+    """Generate one search-targets file per ward. Returns
+    {"written": [...], "skipped": [...], "failed": [...]} ward names."""
     wards_df = pd.read_csv(wards_file)
+    wards_df.columns = wards_df.columns.str.strip()  # tolerate "name, other" headers
     for col in ("ward_name", "constituency_name"):
         if col not in wards_df.columns:
             logger.error("%s missing required column '%s'", wards_file, col)
-            sys.exit(1)
+            return {"written": [], "skipped": [], "failed": []}
     if "local_authority" not in wards_df.columns:
         wards_df["local_authority"] = ""
 
@@ -203,21 +192,28 @@ def run(
         else:
             logger.warning("Ward boundaries file not found at %s — skipping geodata, LLM-only", boundaries_path)
 
-    # Skip wards already present in output_path from a previous run — no
-    # per-ward memory otherwise, so appending new wards to wards_file would
-    # silently regenerate (and re-spend LLM calls on) every ward already done.
-    existing_by_ward = {} if force else _load_existing_rows_by_ward(output_path)
+    written, skipped, failed = [], [], []
 
-    all_rows = []
     for _, ward in wards_df.iterrows():
         ward_name = str(ward["ward_name"]).strip()
         constituency_name = str(ward["constituency_name"]).strip()
         local_authority = str(ward.get("local_authority", "") or "").strip()
 
-        existing_key = (ward_name.casefold(), local_authority.casefold())
-        if existing_key in existing_by_ward:
+        ward_slug = slugify(ward_name)
+        output_path = WARD_SEARCH_TARGETS_DIR / f"{ward_slug}_search_targets.csv"
+
+        if not force and output_path.exists():
             logger.info("Skipping (already generated): %s — pass --force to regenerate", ward_name)
-            all_rows.extend(existing_by_ward[existing_key])
+            skipped.append(ward_name)
+            continue
+
+        if force and _would_clobber_scraped_data(output_path):
+            logger.error(
+                "%s already contains scraped 'groups' data — refusing to overwrite %s. "
+                "Pull results first if you need them, or delete the file to force regeneration.",
+                ward_name, output_path,
+            )
+            failed.append(ward_name)
             continue
 
         match = constituencies_df[constituencies_df["PCON24NM"] == constituency_name]
@@ -226,6 +222,7 @@ def run(
                 "Skipping '%s': constituency '%s' not found in %s",
                 ward_name, constituency_name, CONSTITUENCIES_PATH,
             )
+            failed.append(ward_name)
             continue
         constituency_row = match.iloc[0].to_dict()
 
@@ -247,11 +244,13 @@ def run(
 
         items = _merge_items(geo_items, llm_items)
         if not items:
-            logger.warning("No items found for '%s' (geodata or LLM)", ward_name)
+            logger.warning("No items found for '%s' (geodata or LLM) — nothing written", ward_name)
+            failed.append(ward_name)
             continue
 
         county = ward_geodata.encode_county(ward_name, local_authority)
 
+        rows = []
         for item in items:
             rank = CONFIDENCE_RANK[item["confidence"]]
             flag = "" if rank >= min_rank else "  [dropped: below min-confidence]"
@@ -270,35 +269,37 @@ def run(
             row["scroll"] = SCROLL_BY_TYPE.get(item["type"], DEFAULT_SCROLL)
             row["processed"] = False
             row["groups"] = ""
-            all_rows.append(row)
+            rows.append(row)
 
-    if not all_rows:
-        logger.error("No search targets generated — check wards file and constituency names")
-        sys.exit(1)
+        if not rows:
+            logger.warning("Everything for '%s' fell below --min-confidence — nothing written", ward_name)
+            failed.append(ward_name)
+            continue
 
-    result = pd.DataFrame(all_rows)
-    result.to_csv(output_path, index=False, encoding="utf-8", errors="surrogatepass")
+        result = pd.DataFrame(rows)
+        result.to_csv(output_path, index=False, encoding="utf-8", errors="surrogatepass")
+        logger.info("  Wrote %d search-target rows for %s → %s", len(result), ward_name, output_path)
+        written.append(ward_name)
+
     logger.info(
-        "Wrote %d search-target rows across %d wards → %s",
-        len(result), wards_df["ward_name"].nunique(), output_path,
+        "Done: %d written, %d skipped (already generated), %d failed",
+        len(written), len(skipped), len(failed),
     )
-    return result
+    return {"written": written, "skipped": skipped, "failed": failed}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate search targets for a handful of named wards")
+    parser = argparse.ArgumentParser(description="Generate one search-targets file per ward, for a handful of named wards")
     parser.add_argument("--wards-file", default=str(DEFAULT_WARDS_FILE), help=f"CSV with ward_name, constituency_name, [local_authority] columns (default: {DEFAULT_WARDS_FILE})")
-    parser.add_argument("--output", default=None, help=f"Output CSV path (default: {DEFAULT_OUTPUT})")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="LLM model (default: web-search-grounded)")
     parser.add_argument("--min-confidence", choices=["low", "medium", "high"], default="low", help="Drop items below this confidence (default: low, i.e. keep everything)")
-    parser.add_argument("--force", action="store_true", help="Regenerate every ward (ignoring the already-generated skip) and overwrite even if the output already has scraped 'groups' data")
+    parser.add_argument("--force", action="store_true", help="Regenerate every ward (ignoring the already-generated skip) and overwrite even if a ward's file already has scraped 'groups' data")
     parser.add_argument("--boundaries", default=str(WARD_BOUNDARIES_PATH), help=f"Ward boundary shapefile path (default: {WARD_BOUNDARIES_PATH})")
     parser.add_argument("--skip-geodata", action="store_true", help="Skip the boundary/Overpass lookup, LLM only")
     args = parser.parse_args()
 
     run(
         wards_file=Path(args.wards_file),
-        output_path=Path(args.output) if args.output else DEFAULT_OUTPUT,
         model=args.model,
         min_confidence=args.min_confidence,
         force=args.force,
