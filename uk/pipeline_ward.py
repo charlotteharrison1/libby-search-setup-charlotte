@@ -89,6 +89,46 @@ _BUY_SELL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Church-keyword groups the assessor rated "Unsure" are overwhelmingly
+# Facebook keyword-match artifacts: any search string containing "Church"
+# (e.g. the locality "Church End") pulls in huge unrelated church groups
+# ("NEW BEGINNINGS CHURCH!", 3100 members; "CATHOLIC CHURCH", 593k), which
+# then survive because the final filter keeps everything != "No". Name-based
+# heuristic, same mechanism as _BUY_SELL_PATTERN — groups whose name doesn't
+# use one of these words (e.g. "St Faith's Hub") are not caught.
+_CHURCH_PATTERN = re.compile(
+    r"\b(?:church|chapel|ministry|ministries|parish|cathedral|catholic|"
+    r"gospel|worship|prayer|christian)\b",
+    re.IGNORECASE,
+)
+
+
+def _drop_unsure_churches(df: pd.DataFrame, area_name: str, name_col: str = "name") -> pd.DataFrame:
+    """Drop groups assessed "Unsure" whose name matches _CHURCH_PATTERN —
+    but spare any that mention a distinctive word of the area's own name
+    (an area like "Finchley Church End" has genuine groups with churchy
+    names; "Finchley Baptist Church" stays, an unrelated megachurch goes).
+    "Yes"-assessed church groups are never touched. Every dropped name is
+    logged so the heuristic can be audited."""
+    if "first_assessment" not in df.columns or df.empty:
+        return df
+    # Distinctive area words: 4+ letters and not themselves church words —
+    # for "Finchley Church End" that leaves just "finchley".
+    area_tokens = {
+        t for t in re.findall(r"[a-z]+", str(area_name).casefold())
+        if len(t) >= 4 and not _CHURCH_PATTERN.search(t)
+    }
+    names = df[name_col].astype(str)
+    unsure = df["first_assessment"].astype(str).str.strip().str.casefold() == "unsure"
+    churchy = names.str.contains(_CHURCH_PATTERN, na=False)
+    mentions_area = names.apply(lambda n: any(t in n.casefold() for t in area_tokens))
+    mask = unsure & churchy & ~mentions_area
+    if mask.any():
+        logger.info("  Dropped %d Unsure church-name group(s):", int(mask.sum()))
+        for n in names[mask]:
+            logger.info("    %s", n)
+    return df[~mask].copy()
+
 
 def _parse_details_on_exploded(df: pd.DataFrame) -> pd.DataFrame:
     cols_to_drop = [c for c in ("public_y_n", "members", "posts_a_month") if c in df.columns]
@@ -123,12 +163,50 @@ def _aggregate_ward_groups(df_exploded: pd.DataFrame, ward_id: str) -> pd.DataFr
                 "public_y_n": bool(pd.to_numeric(g["public_y_n"], errors="coerce").fillna(0).max()),
                 "members": pd.to_numeric(g["members"], errors="coerce").max(),
                 "posts_a_month": pd.to_numeric(g["posts_a_month"], errors="coerce").max(),
+                # A group can be found by more than one search target (e.g.
+                # both a "colloquial_name" and a "park" search) — kept as the
+                # full set, not a single value, so counts reported later are
+                # honest about that overlap rather than forcing one "true"
+                # source per group. Stripped out before groups_{ward}.csv is
+                # written (see FINAL_COLUMNS) — internal to this script only.
+                "target_types": sorted(set(g["target_type"].dropna())) if "target_type" in g.columns else [],
+                "target_sources": sorted(set(g["target_source"].dropna())) if "target_source" in g.columns else [],
             }),
             include_groups=False,
         )
         .reset_index(drop=True)
     )
     return agg
+
+
+def _log_targeting_breakdown(ward_name: str, final: pd.DataFrame) -> pd.DataFrame:
+    """Log a per-type/per-source count rollup, and return a PER-GROUP table
+    (one row per surviving group, with the target types/sources that found it
+    '; '-joined) for targeting_breakdown_{ward}.csv — so the file answers
+    "which actual groups came from each source", not just how many. Still
+    inclusive, not a partition: a group found by two different target types
+    lists both."""
+    if "target_types" not in final.columns or final.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for col, label in (("target_types", "type"), ("target_sources", "source")):
+        if col not in final.columns:
+            continue
+        counts = final[col].explode().dropna().value_counts()
+        for value, count in counts.items():
+            rows.append((label, value, int(count)))
+    if rows:
+        logger.info("  Targeting breakdown for %s (%d final groups; overlaps allowed):", ward_name, len(final))
+        for label, value, count in sorted(rows, key=lambda r: (r[0], -r[2])):
+            logger.info("    %-6s %-18s %d", label, value, count)
+
+    keep = [c for c in ("name", "url", "members", "posts_a_month") if c in final.columns]
+    table = final[keep].copy()
+    for col in ("target_types", "target_sources"):
+        if col in final.columns:
+            table[col] = final[col].apply("; ".join)
+    return table.sort_values("members", ascending=False, na_position="last")
 
 
 def _clear_cached_description(ward_id: str, path: Path) -> None:
@@ -220,7 +298,14 @@ def _process_file(
         final = combined[
             (combined["first_assessment"] != "No") & (combined["members"].fillna(0) >= min_members)
         ].copy()
+        final = _drop_unsure_churches(final, ward_name)
         final = final.sort_values(by=["members", "posts_a_month"], ascending=False, na_position="last")
+
+        breakdown = _log_targeting_breakdown(ward_name, final)
+        if not breakdown.empty:
+            breakdown_path = WARD_OUTPUT_DIR / f"targeting_breakdown_{ward_name}.csv"
+            breakdown.to_csv(breakdown_path, index=False, encoding="utf-8", errors="surrogatepass")
+
         final["locality"] = "C"
         final["locality_name"] = ""
         final = final[FINAL_COLUMNS]

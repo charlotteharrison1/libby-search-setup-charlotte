@@ -15,6 +15,7 @@ LAD*NM name columns and polygon geometry).
 """
 
 import logging
+import time
 
 import geopandas as gpd
 import requests
@@ -31,9 +32,16 @@ COUNTY_DELIMITER = " | "
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 OVERPASS_TIMEOUT_S = 90
+# The free public instance is shared/best-effort and occasionally 504s under
+# load — every time that's happened this session, retrying shortly after has
+# succeeded (confirmed the query itself is fine, it's transient server load).
+# Delay increases each attempt: 15s, then 30s.
+OVERPASS_MAX_ATTEMPTS = 3
+OVERPASS_RETRY_DELAY_S = 15
 
-# Maps OSM tag combinations to the same category vocabulary
-# generate_search_ward.py's LLM prompt uses (VALID_TYPES there).
+# Maps OSM tag combinations to the same style of category labels
+# generate_search_ward.py's LLM prompt uses (free text there, not a fixed
+# list — this side just happens to be consistent since it's rule-based).
 #
 # highway=residential/living_street/unclassified are included (local roads),
 # but length-filtered to the biggest ones only (BIG_RESIDENTIAL_MIN_LENGTH_M
@@ -162,13 +170,21 @@ def query_overpass_within(polygon) -> list[dict]:
     # filter below needs each way's full shape, not just a point.
 
     headers = {"User-Agent": "libby-search-setup-ward-script/1.0 (one-off ward research, contact: repo owner)"}
-    try:
-        resp = requests.post(OVERPASS_URL, data={"data": query}, headers=headers, timeout=OVERPASS_TIMEOUT_S + 10)
-        resp.raise_for_status()
-        elements = resp.json().get("elements", [])
-    except Exception as e:
-        logger.warning("Overpass query failed: %s", e)
-        return []
+    elements = None
+    for attempt in range(1, OVERPASS_MAX_ATTEMPTS + 1):
+        try:
+            resp = requests.post(OVERPASS_URL, data={"data": query}, headers=headers, timeout=OVERPASS_TIMEOUT_S + 10)
+            resp.raise_for_status()
+            elements = resp.json().get("elements", [])
+            break
+        except Exception as e:
+            if attempt < OVERPASS_MAX_ATTEMPTS:
+                delay = OVERPASS_RETRY_DELAY_S * attempt
+                logger.warning("Overpass query failed (attempt %d/%d): %s — retrying in %ds", attempt, OVERPASS_MAX_ATTEMPTS, e, delay)
+                time.sleep(delay)
+            else:
+                logger.warning("Overpass query failed (attempt %d/%d): %s — giving up", attempt, OVERPASS_MAX_ATTEMPTS, e)
+                return []
 
     seen = set()
     items = []

@@ -139,6 +139,13 @@ def _aggregate_new_groups(df_exploded: pd.DataFrame, pcon_codes: set[str]) -> pd
                 "posts_a_month": pd.to_numeric(g["posts_a_month"], errors="coerce").max(),
                 "locality": "C",
                 "locality_name": "",
+                # Same overlap-honest set semantics as pipeline_ward.py: a
+                # group found by two target types counts under both. Guarded —
+                # older master files predate these columns — and "" (untagged
+                # rows) is excluded. Logged per constituency, then dropped by
+                # _combine_and_filter's keep_cols, so outputs are unchanged.
+                "target_types": sorted(set(g["target_type"].dropna()) - {""}) if "target_type" in g.columns else [],
+                "target_sources": sorted(set(g["target_source"].dropna()) - {""}) if "target_source" in g.columns else [],
             }),
             include_groups=False,
         )
@@ -187,11 +194,85 @@ _BUY_SELL_PATTERN = re.compile(
 )
 
 
+def _targeting_breakdown(pcon24nm: str, final: pd.DataFrame, new_groups: pd.DataFrame) -> pd.DataFrame:
+    """Per-group targeting report (same shape as pipeline_ward.py's
+    targeting_breakdown_{ward}.csv): one row per final surviving group, with
+    the target types/sources that found it '; '-joined. The tag sets live on
+    the aggregated new-scrape groups (they're dropped by _combine_and_filter's
+    keep_cols), so they're merged back onto the final groups by url here. Geo
+    add-on groups were never searched for directly and get blank tags — the
+    locality column (A/L/R vs C) already identifies them. Also logs a count
+    rollup. Returns an empty frame — write nothing — when no group carries a
+    tag (master files predating target_type/target_source)."""
+    if "target_types" not in new_groups.columns or final.empty:
+        return pd.DataFrame()
+
+    merged = final.merge(new_groups[["url", "target_types", "target_sources"]], on="url", how="left")
+    for col in ("target_types", "target_sources"):
+        merged[col] = merged[col].apply(lambda v: v if isinstance(v, list) else [])
+    if merged["target_types"].str.len().sum() == 0 and merged["target_sources"].str.len().sum() == 0:
+        return pd.DataFrame()
+
+    rows = []
+    for col, label in (("target_types", "type"), ("target_sources", "source")):
+        counts = merged[col].explode().dropna().value_counts()
+        for value, count in counts.items():
+            rows.append((label, value, int(count)))
+    if rows:
+        logger.info("  Targeting breakdown for %s (%d final groups; overlaps allowed):", pcon24nm, len(merged))
+        for label, value, count in sorted(rows, key=lambda r: (r[0], -r[2])):
+            logger.info("    %-6s %-18s %d", label, value, count)
+
+    keep = [c for c in ("name", "url", "members", "posts_a_month", "locality") if c in merged.columns]
+    table = merged[keep].copy()
+    for col in ("target_types", "target_sources"):
+        table[col] = merged[col].apply("; ".join)
+    return table.sort_values("members", ascending=False, na_position="last")
+
+
 def _drop_buy_sell(df: pd.DataFrame, name_col: str = "name") -> pd.DataFrame:
     mask = df[name_col].astype(str).str.contains(_BUY_SELL_PATTERN, na=False)
     dropped = int(mask.sum())
     if dropped:
         logger.info("  Dropped %d buy/sell groups", dropped)
+    return df[~mask].copy()
+
+
+# Church-keyword groups the assessor rated "Unsure" are overwhelmingly
+# Facebook keyword-match artifacts: any search string containing "Church"
+# (e.g. a "Church End" locality) pulls in huge unrelated church groups,
+# which then survive because the final filter keeps everything != "No".
+# Name-based heuristic, same mechanism as _BUY_SELL_PATTERN — mirrored in
+# uk/pipeline_ward.py.
+_CHURCH_PATTERN = re.compile(
+    r"\b(?:church|chapel|ministry|ministries|parish|cathedral|catholic|"
+    r"gospel|worship|prayer|christian)\b",
+    re.IGNORECASE,
+)
+
+
+def _drop_unsure_churches(df: pd.DataFrame, area_name: str, name_col: str = "name") -> pd.DataFrame:
+    """Drop groups assessed "Unsure" whose name matches _CHURCH_PATTERN —
+    but spare any that mention a distinctive word of the area's own name
+    ("Finchley Baptist Church" stays for Finchley and Golders Green, an
+    unrelated megachurch goes). "Yes"-assessed church groups are never
+    touched. Every dropped name is logged so the heuristic can be audited."""
+    if "first_assessment" not in df.columns or df.empty:
+        return df
+    # Distinctive area words: 4+ letters and not themselves church words.
+    area_tokens = {
+        t for t in re.findall(r"[a-z]+", str(area_name).casefold())
+        if len(t) >= 4 and not _CHURCH_PATTERN.search(t)
+    }
+    names = df[name_col].astype(str)
+    unsure = df["first_assessment"].astype(str).str.strip().str.casefold() == "unsure"
+    churchy = names.str.contains(_CHURCH_PATTERN, na=False)
+    mentions_area = names.apply(lambda n: any(t in n.casefold() for t in area_tokens))
+    mask = unsure & churchy & ~mentions_area
+    if mask.any():
+        logger.info("  Dropped %d Unsure church-name group(s):", int(mask.sum()))
+        for n in names[mask]:
+            logger.info("    %s", n)
     return df[~mask].copy()
 
 
@@ -328,11 +409,18 @@ def run(
         final_c = combined[
             (combined["first_assessment"] != "No") & (combined["members"] > 50)
         ].copy()
+        final_c = _drop_unsure_churches(final_c, pcon24nm)
         final_c = final_c.sort_values(
             by=["PCON24CD", "members", "posts_a_month"],
             ascending=False,
             na_position="last",
         )
+
+        breakdown = _targeting_breakdown(pcon24nm, final_c, new_groups_c)
+        if not breakdown.empty:
+            breakdown_path = OUTPUT_DIR / f"targeting_breakdown_{pcon24nm}.csv"
+            breakdown.to_csv(breakdown_path, index=False, encoding="utf-8", errors="surrogatepass")
+            logger.info("  Saved targeting breakdown → %s", breakdown_path)
 
         final_c.to_csv(
             intermediate_path,
