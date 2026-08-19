@@ -170,7 +170,12 @@ def _aggregate_ward_groups(df_exploded: pd.DataFrame, ward_id: str) -> pd.DataFr
                 # source per group. Stripped out before groups_{ward}.csv is
                 # written (see FINAL_COLUMNS) — internal to this script only.
                 "target_types": sorted(set(g["target_type"].dropna())) if "target_type" in g.columns else [],
-                "target_sources": sorted(set(g["target_source"].dropna())) if "target_source" in g.columns else [],
+                # Already-scraped files carry the old "geo" source label —
+                # normalise to "overpass" (what that source actually is;
+                # generate_search_ward.py writes "overpass" directly now).
+                "target_sources": sorted(
+                    {"overpass" if s == "geo" else s for s in g["target_source"].dropna()}
+                ) if "target_source" in g.columns else [],
             }),
             include_groups=False,
         )
@@ -207,6 +212,35 @@ def _log_targeting_breakdown(ward_name: str, final: pd.DataFrame) -> pd.DataFram
         if col in final.columns:
             table[col] = final[col].apply("; ".join)
     return table.sort_values("members", ascending=False, na_position="last")
+
+
+def _update_targeting_master(ward_name: str, local_authority: str, breakdown: pd.DataFrame) -> None:
+    """Upsert this ward's rows into the cumulative targeting master
+    (uk/output/wards/targeting_master.csv): one row per final group with its
+    '; '-joined tags/sources. Replace-per-area semantics — a rerun deletes
+    the ward's old rows first, so the master is always the latest result per
+    ward, never duplicated. Keyed on (ward, local_authority) because ward
+    names are not unique nationally."""
+    master_path = WARD_OUTPUT_DIR / "targeting_master.csv"
+    rows = pd.DataFrame({
+        "name": breakdown["name"].astype(str),
+        "url": breakdown["url"].astype(str),
+        "ward": ward_name,
+        "local_authority": local_authority,
+        "tags": breakdown["target_types"],
+        "sources": breakdown["target_sources"],
+    })
+
+    if master_path.exists():
+        master = pd.read_csv(master_path, dtype=str).fillna("")
+        master = master[
+            ~((master["ward"] == ward_name) & (master["local_authority"] == local_authority))
+        ]
+        master = pd.concat([master, rows], ignore_index=True)
+    else:
+        master = rows
+    master.to_csv(master_path, index=False, encoding="utf-8", errors="surrogatepass")
+    logger.info("  Updated targeting master (%d rows for %s) → %s", len(rows), ward_name, master_path)
 
 
 def _clear_cached_description(ward_id: str, path: Path) -> None:
@@ -305,6 +339,7 @@ def _process_file(
         if not breakdown.empty:
             breakdown_path = WARD_OUTPUT_DIR / f"targeting_breakdown_{ward_name}.csv"
             breakdown.to_csv(breakdown_path, index=False, encoding="utf-8", errors="surrogatepass")
+            _update_targeting_master(ward_name, local_authority, breakdown)
 
         final["locality"] = "C"
         final["locality_name"] = ""

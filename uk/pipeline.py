@@ -230,6 +230,36 @@ def _targeting_breakdown(pcon24nm: str, final: pd.DataFrame, new_groups: pd.Data
     return table.sort_values("members", ascending=False, na_position="last")
 
 
+def _update_targeting_master(pcon24nm: str, breakdown: pd.DataFrame) -> None:
+    """Upsert this constituency's rows into the cumulative targeting master
+    (uk/output/targeting_master.csv): one row per final group with its
+    '; '-joined tags/sources. Replace-per-area semantics — a rerun deletes
+    the constituency's old rows first, so the master is always the latest
+    result per area, never duplicated. Geo add-on borrows (locality A/L/R)
+    were never found by a tagged search, so their source is labelled
+    'geo add on' rather than left blank."""
+    master_path = OUTPUT_DIR / "targeting_master.csv"
+    rows = pd.DataFrame({
+        "name": breakdown["name"].astype(str),
+        "url": breakdown["url"].astype(str),
+        "constituency": pcon24nm,
+        "tags": breakdown["target_types"],
+        "sources": breakdown["target_sources"],
+    })
+    if "locality" in breakdown.columns:
+        addon = (breakdown["locality"].astype(str) != "C") & (rows["sources"] == "")
+        rows.loc[addon.values, "sources"] = "geo add on"
+
+    if master_path.exists():
+        master = pd.read_csv(master_path, dtype=str).fillna("")
+        master = master[master["constituency"] != pcon24nm]
+        master = pd.concat([master, rows], ignore_index=True)
+    else:
+        master = rows
+    master.to_csv(master_path, index=False, encoding="utf-8", errors="surrogatepass")
+    logger.info("  Updated targeting master (%d rows for %s) → %s", len(rows), pcon24nm, master_path)
+
+
 def _drop_buy_sell(df: pd.DataFrame, name_col: str = "name") -> pd.DataFrame:
     mask = df[name_col].astype(str).str.contains(_BUY_SELL_PATTERN, na=False)
     dropped = int(mask.sum())
@@ -421,6 +451,7 @@ def run(
             breakdown_path = OUTPUT_DIR / f"targeting_breakdown_{pcon24nm}.csv"
             breakdown.to_csv(breakdown_path, index=False, encoding="utf-8", errors="surrogatepass")
             logger.info("  Saved targeting breakdown → %s", breakdown_path)
+            _update_targeting_master(pcon24nm, breakdown)
 
         final_c.to_csv(
             intermediate_path,

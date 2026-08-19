@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Urban/rural vs Facebook group count</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #fafafa;
+    color: #1a1a1a;
+    margin: 0;
+    padding: 24px 32px 48px;
+  }
+  h1 { font-size: 1.3rem; margin: 0 0 4px; }
+  p.sub { color: #666; margin: 0 0 24px; font-size: 0.9rem; }
+  #chart-wrap { position: relative; }
+  svg { overflow: visible; }
+  .axis-label { font-size: 12px; fill: #444; }
+  .tick text { font-size: 11px; fill: #666; }
+  .tick line, .domain { stroke: #ccc; }
+  .gridline { stroke: #eee; stroke-width: 1; }
+  circle.point {
+    stroke: #fff;
+    stroke-width: 1;
+    cursor: pointer;
+    transition: r 0.1s ease;
+  }
+  circle.point:hover { stroke: #1a1a1a; stroke-width: 1.5; }
+  #tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: #1a1a1a;
+    color: #fff;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    opacity: 0;
+    transform: translate(-50%, -100%);
+    white-space: nowrap;
+    z-index: 10;
+  }
+  #tooltip b { font-size: 13.5px; }
+  #legend {
+    display: flex;
+    gap: 18px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-swatch { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body>
+
+<h1>Facebook group count vs constituency urban %</h1>
+<p class="sub">Each point is a constituency. X = % of population in urban LSOAs (rural_index.json). Y = unique Facebook group count (Clacton-etc). Hover a point for details.</p>
+
+<div id="chart-wrap">
+  <svg id="chart"></svg>
+  <div id="tooltip"></div>
+</div>
+<div id="legend"></div>
+
+<script>
+const DATA = [{"constituency": "Amber Valley", "group_count": 32, "source": "inputs", "urban_pct": 83.58, "rural_pct": 10.21, "highly_rural_pct": 6.21, "label": "Urban with rural areas"}, {"constituency": "Bassetlaw", "group_count": 47, "source": "inputs", "urban_pct": 66.03, "rural_pct": 19.71, "highly_rural_pct": 14.27, "label": "Urban with rural areas"}, {"constituency": "Bolsover", "group_count": 31, "source": "groups", "urban_pct": 54.57, "rural_pct": 35.3, "highly_rural_pct": 10.13, "label": "Rural"}, {"constituency": "Cardiff East", "group_count": 18, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Cardiff North", "group_count": 22, "source": "groups", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Chipping Barnet", "group_count": 20, "source": "groups", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Clacton", "group_count": 20, "source": "groups", "urban_pct": 72.28, "rural_pct": 14.92, "highly_rural_pct": 12.8, "label": "Urban with rural areas"}, {"constituency": "Corby and East Northamptonshire", "group_count": 54, "source": "inputs", "urban_pct": 56.5, "rural_pct": 29.6, "highly_rural_pct": 13.9, "label": "Rural"}, {"constituency": "Derby North", "group_count": 21, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Derby South", "group_count": 44, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Earley and Woodley", "group_count": 12, "source": "groups", "urban_pct": 94.73, "rural_pct": 2.44, "highly_rural_pct": 2.83, "label": "Urban"}, {"constituency": "Erewash", "group_count": 39, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Filton and Bradley Stoke", "group_count": 16, "source": "inputs", "urban_pct": 94.18, "rural_pct": 2.42, "highly_rural_pct": 3.4, "label": "Urban"}, {"constituency": "Finchley and Golders Green", "group_count": 23, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Hampstead and Highgate", "group_count": 15, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Hyndburn", "group_count": 30, "source": "inputs", "urban_pct": 93.09, "rural_pct": 6.91, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Knowsley", "group_count": 25, "source": "groups", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Lincoln", "group_count": 33, "source": "groups", "urban_pct": 91.63, "rural_pct": 8.37, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Livingston", "group_count": 16, "source": "groups", "urban_pct": 79.22, "rural_pct": 15.28, "highly_rural_pct": 5.5, "label": "Urban with rural areas"}, {"constituency": "Makerfield", "group_count": 16, "source": "groups", "urban_pct": 98.49, "rural_pct": 1.51, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Manchester Central", "group_count": 20, "source": "groups", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Mansfield", "group_count": 43, "source": "groups", "urban_pct": 87.21, "rural_pct": 12.79, "highly_rural_pct": 0.0, "label": "Urban with rural areas"}, {"constituency": "Mid Derbyshire", "group_count": 46, "source": "inputs", "urban_pct": 96.02, "rural_pct": 0.0, "highly_rural_pct": 3.98, "label": "Urban"}, {"constituency": "Midlothian", "group_count": 30, "source": "groups", "urban_pct": 75.54, "rural_pct": 7.43, "highly_rural_pct": 17.03, "label": "Urban with rural areas"}, {"constituency": "Northampton South", "group_count": 38, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Norwich North", "group_count": 30, "source": "groups", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Nottingham North and Kimberley", "group_count": 26, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Pontefract, Castleford and Knottingley", "group_count": 20, "source": "inputs", "urban_pct": 98.53, "rural_pct": 0.0, "highly_rural_pct": 1.47, "label": "Urban"}, {"constituency": "Pontypridd", "group_count": 17, "source": "inputs", "urban_pct": 73.18, "rural_pct": 26.82, "highly_rural_pct": 0.0, "label": "Urban with rural areas"}, {"constituency": "Sittingbourne and Sheppey", "group_count": 59, "source": "groups", "urban_pct": 81.14, "rural_pct": 7.82, "highly_rural_pct": 11.05, "label": "Urban with rural areas"}, {"constituency": "South Derbyshire", "group_count": 34, "source": "groups", "urban_pct": 63.32, "rural_pct": 21.1, "highly_rural_pct": 15.59, "label": "Rural"}, {"constituency": "Tipton and Wednesbury", "group_count": 19, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "Vale of Glamorgan", "group_count": 45, "source": "inputs", "urban_pct": 73.31, "rural_pct": 10.7, "highly_rural_pct": 16.0, "label": "Urban with rural areas"}, {"constituency": "Walsall and Bloxwich", "group_count": 27, "source": "inputs", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}, {"constituency": "West Bromwich", "group_count": 17, "source": "groups", "urban_pct": 100.0, "rural_pct": 0.0, "highly_rural_pct": 0.0, "label": "Urban"}];
+
+const LABEL_COLORS = {
+  "Urban": "#3969AC",
+  "Urban with rural areas": "#7F3C8D",
+  "Rural": "#11A579",
+  "Sparse and rural": "#E68310",
+};
+
+function render() {
+  const width = 880, height = 520;
+  const margin = { top: 20, right: 20, bottom: 55, left: 55 };
+  const innerW = width - margin.left - margin.right;
+  const innerH = height - margin.top - margin.bottom;
+
+  const svg = document.getElementById('chart');
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', height);
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+  const xMax = 100;
+  const yMax = Math.max(...DATA.map(d => d.group_count)) * 1.1;
+
+  const xScale = v => margin.left + (v / xMax) * innerW;
+  const yScale = v => margin.top + innerH - (v / yMax) * innerH;
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const g = document.createElementNS(ns, 'g');
+  svg.appendChild(g);
+
+  // gridlines + x axis ticks (every 20%)
+  for (let v = 0; v <= 100; v += 20) {
+    const x = xScale(v);
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', x); line.setAttribute('x2', x);
+    line.setAttribute('y1', margin.top); line.setAttribute('y2', margin.top + innerH);
+    line.setAttribute('class', 'gridline');
+    g.appendChild(line);
+
+    const text = document.createElementNS(ns, 'text');
+    text.setAttribute('x', x); text.setAttribute('y', margin.top + innerH + 18);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('class', 'tick');
+    text.textContent = v + '%';
+    g.appendChild(text);
+  }
+
+  // y axis ticks (5 steps)
+  const yStep = Math.ceil(yMax / 5 / 5) * 5 || 1;
+  for (let v = 0; v <= yMax; v += yStep) {
+    const y = yScale(v);
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', margin.left); line.setAttribute('x2', margin.left + innerW);
+    line.setAttribute('y1', y); line.setAttribute('y2', y);
+    line.setAttribute('class', 'gridline');
+    g.appendChild(line);
+
+    const text = document.createElementNS(ns, 'text');
+    text.setAttribute('x', margin.left - 8); text.setAttribute('y', y + 4);
+    text.setAttribute('text-anchor', 'end');
+    text.setAttribute('class', 'tick');
+    text.textContent = Math.round(v);
+    g.appendChild(text);
+  }
+
+  // axis labels
+  const xLabel = document.createElementNS(ns, 'text');
+  xLabel.setAttribute('x', margin.left + innerW / 2);
+  xLabel.setAttribute('y', height - 8);
+  xLabel.setAttribute('text-anchor', 'middle');
+  xLabel.setAttribute('class', 'axis-label');
+  xLabel.textContent = 'Urban population %';
+  g.appendChild(xLabel);
+
+  const yLabel = document.createElementNS(ns, 'text');
+  yLabel.setAttribute('x', -(margin.top + innerH / 2));
+  yLabel.setAttribute('y', 16);
+  yLabel.setAttribute('text-anchor', 'middle');
+  yLabel.setAttribute('transform', 'rotate(-90)');
+  yLabel.setAttribute('class', 'axis-label');
+  yLabel.textContent = 'Facebook group count';
+  g.appendChild(yLabel);
+
+  const tooltip = document.getElementById('tooltip');
+
+  DATA.forEach(d => {
+    const cx = xScale(d.urban_pct);
+    const cy = yScale(d.group_count);
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('cx', cx);
+    circle.setAttribute('cy', cy);
+    circle.setAttribute('r', 6);
+    circle.setAttribute('fill', LABEL_COLORS[d.label] || '#999');
+    circle.setAttribute('fill-opacity', 0.85);
+    circle.setAttribute('class', 'point');
+    circle.addEventListener('mousemove', (e) => {
+      tooltip.style.left = e.pageX + 'px';
+      tooltip.style.top = (e.pageY - 12) + 'px';
+      tooltip.style.opacity = 1;
+      tooltip.innerHTML = `<b>${d.constituency}</b><br>` +
+        `Groups: ${d.group_count}<br>` +
+        `Urban: ${d.urban_pct}% &middot; Rural: ${d.rural_pct}% &middot; Highly rural: ${d.highly_rural_pct}%<br>` +
+        `Label: ${d.label}`;
+    });
+    circle.addEventListener('mouseleave', () => { tooltip.style.opacity = 0; });
+    g.appendChild(circle);
+  });
+
+  const legend = document.getElementById('legend');
+  Object.entries(LABEL_COLORS).forEach(([label, color]) => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<span class="legend-swatch" style="background:${color}"></span>${label}`;
+    legend.appendChild(item);
+  });
+}
+
+render();
+</script>
+</body>
+</html>

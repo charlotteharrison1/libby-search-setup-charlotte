@@ -337,7 +337,7 @@ def run(
         for item in items:
             rank = CONFIDENCE_RANK[item["confidence"]]
             flag = "" if rank >= min_rank else "  [dropped: below min-confidence]"
-            source = "geo" if item in geo_items else "llm"
+            source = "overpass" if item in geo_items else "llm"
             logger.info("  [%s/%s/%s] %s%s", source, item["type"], item["confidence"], item["name"], flag)
             if rank < min_rank:
                 continue

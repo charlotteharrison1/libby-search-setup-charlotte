@@ -1,0 +1,317 @@
+[
+  {
+    "constituency": "Amber Valley",
+    "group_count": 32,
+    "source": "inputs",
+    "urban_pct": 83.58,
+    "rural_pct": 10.21,
+    "highly_rural_pct": 6.21,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "Bassetlaw",
+    "group_count": 47,
+    "source": "inputs",
+    "urban_pct": 66.03,
+    "rural_pct": 19.71,
+    "highly_rural_pct": 14.27,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "Bolsover",
+    "group_count": 31,
+    "source": "groups",
+    "urban_pct": 54.57,
+    "rural_pct": 35.3,
+    "highly_rural_pct": 10.13,
+    "label": "Rural"
+  },
+  {
+    "constituency": "Cardiff East",
+    "group_count": 18,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Cardiff North",
+    "group_count": 22,
+    "source": "groups",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Chipping Barnet",
+    "group_count": 20,
+    "source": "groups",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Clacton",
+    "group_count": 20,
+    "source": "groups",
+    "urban_pct": 72.28,
+    "rural_pct": 14.92,
+    "highly_rural_pct": 12.8,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "Corby and East Northamptonshire",
+    "group_count": 54,
+    "source": "inputs",
+    "urban_pct": 56.5,
+    "rural_pct": 29.6,
+    "highly_rural_pct": 13.9,
+    "label": "Rural"
+  },
+  {
+    "constituency": "Derby North",
+    "group_count": 21,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Derby South",
+    "group_count": 44,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Earley and Woodley",
+    "group_count": 12,
+    "source": "groups",
+    "urban_pct": 94.73,
+    "rural_pct": 2.44,
+    "highly_rural_pct": 2.83,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Erewash",
+    "group_count": 39,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Filton and Bradley Stoke",
+    "group_count": 16,
+    "source": "inputs",
+    "urban_pct": 94.18,
+    "rural_pct": 2.42,
+    "highly_rural_pct": 3.4,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Finchley and Golders Green",
+    "group_count": 23,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Hampstead and Highgate",
+    "group_count": 15,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Hyndburn",
+    "group_count": 30,
+    "source": "inputs",
+    "urban_pct": 93.09,
+    "rural_pct": 6.91,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Knowsley",
+    "group_count": 25,
+    "source": "groups",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Lincoln",
+    "group_count": 33,
+    "source": "groups",
+    "urban_pct": 91.63,
+    "rural_pct": 8.37,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Livingston",
+    "group_count": 16,
+    "source": "groups",
+    "urban_pct": 79.22,
+    "rural_pct": 15.28,
+    "highly_rural_pct": 5.5,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "Makerfield",
+    "group_count": 16,
+    "source": "groups",
+    "urban_pct": 98.49,
+    "rural_pct": 1.51,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Manchester Central",
+    "group_count": 20,
+    "source": "groups",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Mansfield",
+    "group_count": 43,
+    "source": "groups",
+    "urban_pct": 87.21,
+    "rural_pct": 12.79,
+    "highly_rural_pct": 0.0,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "Mid Derbyshire",
+    "group_count": 46,
+    "source": "inputs",
+    "urban_pct": 96.02,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 3.98,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Midlothian",
+    "group_count": 30,
+    "source": "groups",
+    "urban_pct": 75.54,
+    "rural_pct": 7.43,
+    "highly_rural_pct": 17.03,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "Northampton South",
+    "group_count": 38,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Norwich North",
+    "group_count": 30,
+    "source": "groups",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Nottingham North and Kimberley",
+    "group_count": 26,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Pontefract, Castleford and Knottingley",
+    "group_count": 20,
+    "source": "inputs",
+    "urban_pct": 98.53,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 1.47,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Pontypridd",
+    "group_count": 17,
+    "source": "inputs",
+    "urban_pct": 73.18,
+    "rural_pct": 26.82,
+    "highly_rural_pct": 0.0,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "Sittingbourne and Sheppey",
+    "group_count": 59,
+    "source": "groups",
+    "urban_pct": 81.14,
+    "rural_pct": 7.82,
+    "highly_rural_pct": 11.05,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "South Derbyshire",
+    "group_count": 34,
+    "source": "groups",
+    "urban_pct": 63.32,
+    "rural_pct": 21.1,
+    "highly_rural_pct": 15.59,
+    "label": "Rural"
+  },
+  {
+    "constituency": "Tipton and Wednesbury",
+    "group_count": 19,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "Vale of Glamorgan",
+    "group_count": 45,
+    "source": "inputs",
+    "urban_pct": 73.31,
+    "rural_pct": 10.7,
+    "highly_rural_pct": 16.0,
+    "label": "Urban with rural areas"
+  },
+  {
+    "constituency": "Walsall and Bloxwich",
+    "group_count": 27,
+    "source": "inputs",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  },
+  {
+    "constituency": "West Bromwich",
+    "group_count": 17,
+    "source": "groups",
+    "urban_pct": 100.0,
+    "rural_pct": 0.0,
+    "highly_rural_pct": 0.0,
+    "label": "Urban"
+  }
+]

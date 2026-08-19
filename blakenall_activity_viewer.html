@@ -1,0 +1,612 @@
+<title>Blakenall political activity</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --card: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --ring: rgba(11, 11, 11, 0.10);
+    --bar: #2a78d6;
+    --s1: #2a78d6;
+    --s2: #eb6834;
+    --s3: #1baf7a;
+    --s4: #eda100;
+    --s5: #e87ba4;
+    --s6: #008300;
+    --s7: #4a3aa7;
+    --s8: #e34948;
+    --chip-bg: #f0efec;
+    --tip-bg: #0b0b0b;
+    --tip-ink: #fcfcfb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --card: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --ring: rgba(255, 255, 255, 0.10);
+      --bar: #3987e5;
+      --s1: #3987e5;
+      --s2: #d95926;
+      --s3: #199e70;
+      --s4: #c98500;
+      --s5: #d55181;
+      --s6: #008300;
+      --s7: #9085e9;
+      --s8: #e66767;
+      --chip-bg: #262624;
+      --tip-bg: #fcfcfb;
+      --tip-ink: #0b0b0b;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --card: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --ring: rgba(255, 255, 255, 0.10);
+    --bar: #3987e5;
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --s4: #c98500;
+    --s5: #d55181;
+    --s6: #008300;
+    --s7: #9085e9;
+    --s8: #e66767;
+    --chip-bg: #262624;
+    --tip-bg: #fcfcfb;
+    --tip-ink: #0b0b0b;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; display: flex; flex-direction: column; gap: 20px; }
+
+  header .eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 6px;
+  }
+  header h1 {
+    margin: 0 0 8px;
+    font-family: "Avenir Next", "Seravek", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 27px; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance;
+  }
+  header p { margin: 0; color: var(--ink-2); max-width: 70ch; }
+  header p + p { margin-top: 6px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .tile {
+    background: var(--card); border: 1px solid var(--ring); border-radius: 6px;
+    padding: 14px 16px 12px;
+  }
+  .tile .k { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .tile .v { font-size: 26px; font-weight: 600; line-height: 1.2; margin-top: 2px; }
+  .tile .s { font-size: 12.5px; color: var(--ink-2); }
+
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .charts-td { grid-template-columns: minmax(360px, 7fr) minmax(300px, 5fr); }
+  @media (max-width: 780px) { .charts, .charts-td { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--ring); border-radius: 6px;
+    padding: 18px 18px 14px; min-width: 0;
+  }
+  .card h2 { margin: 0 0 2px; font-size: 15.5px; font-weight: 600; }
+  .card .sub { margin: 0 0 14px; font-size: 12.5px; color: var(--ink-2); }
+  .card .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+  svg text { font: 12px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .bar-rect, .slice { cursor: pointer; }
+  .chart-scroll { overflow-x: auto; }
+
+  .empty-state {
+    border: 1px dashed var(--baseline); border-radius: 6px; padding: 20px;
+    color: var(--ink-2); font-size: 13.5px; text-align: center;
+  }
+  .empty-state code {
+    background: var(--chip-bg); padding: 1px 6px; border-radius: 4px; font-size: 12.5px;
+  }
+
+  .legend-row { display: flex; gap: 16px; align-items: center; margin-bottom: 10px; font-size: 12.5px; color: var(--ink-2); }
+  .legend-row .lg { display: flex; align-items: center; gap: 6px; }
+  .legend-row .sw { width: 10px; height: 10px; border-radius: 2px; }
+
+  .donut-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .legend { display: flex; flex-direction: column; gap: 7px; font-size: 13px; min-width: 170px; flex: 1; }
+  .legend .row { display: flex; align-items: baseline; gap: 8px; cursor: pointer; border-radius: 4px; padding: 2px 4px; }
+  .legend .row:hover { background: var(--chip-bg); }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; align-self: center; }
+  .legend .lab { color: var(--ink-2); }
+  .legend .n { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .filterbar { display: none; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+  .filterbar.on { display: flex; }
+  .filterbar .clear {
+    border: 1px solid var(--ring); background: var(--card); color: var(--ink);
+    border-radius: 999px; padding: 3px 12px; font-size: 12.5px; cursor: pointer;
+  }
+  .filterbar .clear:hover { background: var(--chip-bg); }
+  .filterbar .clear:focus-visible, .legend .row:focus-visible,
+  .bar-rect:focus-visible, .slice:focus-visible, .pill:focus-visible {
+    outline: 2px solid var(--bar); outline-offset: 2px;
+  }
+
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th {
+    text-align: left; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--baseline);
+    white-space: nowrap;
+  }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td a { color: var(--ink); text-decoration: none; font-weight: 600; }
+  td a:hover { text-decoration: underline; text-decoration-color: var(--bar); }
+  .datecell { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+  .pill {
+    background: var(--chip-bg); border-radius: 999px; padding: 1px 9px; font-size: 11.5px;
+    color: var(--ink-2); cursor: pointer; border: 1px solid transparent; display: inline-block;
+  }
+  .pill:hover { border-color: var(--bar); color: var(--ink); }
+  .summarycell { color: var(--ink-2); max-width: 340px; font-size: 13px; }
+
+  #tip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--tip-bg); color: var(--tip-ink);
+    border-radius: 5px; padding: 7px 10px; font-size: 12.5px; max-width: 300px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25); line-height: 1.4;
+  }
+  #tip .t-head { font-weight: 600; }
+  #tip .t-dim { opacity: 0.75; }
+
+  footer { font-size: 12px; color: var(--muted); max-width: 80ch; }
+  footer p { margin: 4px 0; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .bar-rect, .slice { transition: opacity 0.12s ease; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Libby search &middot; opinion tracker &middot; Blakenall</p>
+    <h1>Which groups are most politically active?</h1>
+    <p><span id="n-posts-head">&ndash;</span> political posts and <span id="n-comments-head">&ndash;</span> comments
+      on them, across <span id="n-groups-head">&ndash;</span> Facebook groups, <span id="date-span-head">&ndash;</span>.</p>
+    <p>The underlying export is already filtered to political content, so every post and comment counted here
+      is a political one &mdash; this page is purely about where that activity concentrates.</p>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="charts">
+    <div class="card">
+      <h2>Most posts</h2>
+      <p class="sub">Distinct political posts per group.</p>
+      <div class="chart-scroll"><svg id="bar-posts" role="img" aria-label="Bar chart of posts per group"></svg></div>
+      <p class="note">Click a bar to filter the table below.</p>
+    </div>
+    <div class="card">
+      <h2>Most comments</h2>
+      <p class="sub">Comments on those posts, per group.</p>
+      <div class="chart-scroll"><svg id="bar-comments" role="img" aria-label="Bar chart of comments per group"></svg></div>
+      <p class="note">A group can rank differently here than on posts &mdash; that gap is engagement, not just output.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Activity by type</h2>
+    <p class="sub">Posts + comments rolled up by the type you assign each group.</p>
+    <div id="type-chart-wrap"></div>
+  </div>
+
+  <div class="card">
+    <h2>Top issues per group</h2>
+    <p class="sub">Each group&rsquo;s most-posted issues, ranked by number of posts (ties broken by comments). Groups ordered by total posts, same as the chart above.</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Group</th><th>Issue</th><th class="num">Posts</th><th class="num">Comments</th></tr>
+        </thead>
+        <tbody id="issues-tbody"></tbody>
+      </table>
+    </div>
+    <p class="note">Some groups have fewer than three distinct issues in this window and show only what they have.</p>
+  </div>
+
+  <div class="charts charts-td">
+    <div class="card">
+      <h2>Daily activity</h2>
+      <p class="sub">Posts and comments by day, <span id="date-span-trend"></span>.</p>
+      <div class="legend-row">
+        <span class="lg"><span class="sw" style="background:var(--s1)"></span>Posts</span>
+        <span class="lg"><span class="sw" style="background:var(--s2)"></span>Comments</span>
+      </div>
+      <div class="chart-scroll"><svg id="trend" role="img" aria-label="Stacked bar chart of daily posts and comments"></svg></div>
+    </div>
+    <div class="card">
+      <h2>Political topics</h2>
+      <p class="sub">Posts by category &mdash; every post counted once.</p>
+      <div class="donut-row">
+        <svg id="cat-pie" width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Donut chart of posts by category"></svg>
+        <div class="legend" id="cat-legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>All <span id="n-table">&ndash;</span> posts</h2>
+    <p class="sub">Sorted by date, most recent first.</p>
+    <div class="filterbar" id="filterbar">
+      <span id="filterlabel"></span>
+      <button class="clear" id="clearfilter" type="button">Clear filter</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th><th>Group</th><th>Type</th><th>Category</th>
+            <th class="num">Comments</th><th class="num">Reactions</th><th>Summary</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    <p><strong>Reading notes.</strong> A &ldquo;post&rdquo; here is a distinct Facebook post_id found in the scraped
+      comment data &mdash; every post in this export belongs to exactly one group and one category, so the
+      per-group and per-category totals are true partitions of the <span id="n-posts-foot">&ndash;</span> posts.
+      Comment/reaction counts are summed from the comments actually scraped for that post, not the post&rsquo;s
+      full public totals.</p>
+    <p>To label groups by type: edit <code>blakenall_opinion_data/group_types.csv</code> (columns: <code>group,type</code>,
+      free text) and re-run <code>python3 build_blakenall_activity_viewer.py</code>.</p>
+    <p>Source: <code>blakenall_opinion_data/</code>, downloaded 14&nbsp;Aug&nbsp;2026 from the public
+      categorum-hyperlocal export for Blakenall.</p>
+  </footer>
+</div>
+
+<div id="tip"></div>
+
+<script>
+const POSTS = [{"group": "Mossley GB", "type": "", "category": "Environmental", "issue": "Construction Noise", "date": "2026-07-28", "comments": 10, "reactions": 20, "link": "https://www.facebook.com/groups/118723864940258/posts/4595053730640560", "summary": "Residents are expressing concern and annoyance regarding a loud, unusual noise in Mossley, which has been identified as construction activity and linked to wider frustrations over local urban development."}, {"group": "Beechdale, Birchills, Leamore and Reedswood.", "type": "Locality", "category": "Businesses", "issue": "Business Closures Safety", "date": "2026-07-29", "comments": 8, "reactions": 13, "link": "https://www.facebook.com/groups/654222854724242/posts/4641060889373732", "summary": "The immediate closure of the Morrisons Daily and Post Office on Stephenson Square is due to persistent safety concerns and antisocial behaviour, prompting supportive reactions from the local community."}, {"group": "Beechdale Community Partnership", "type": "Locality", "category": "Crime", "issue": "Business Closure Safety", "date": "2026-07-29", "comments": 14, "reactions": 26, "link": "https://www.facebook.com/groups/1457262554850677/posts/2155381481705444", "summary": "The immediate closure of the Stephenson Square Morrisons Daily and Post Office due to safety concerns regarding antisocial behaviour has prompted local residents to express both sympathy for the staff and practical anxiety over uncollected parcels."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Cultural issues", "issue": "Cemetery Access Rules", "date": "2026-07-29", "comments": 7, "reactions": 18, "link": "https://www.facebook.com/groups/1149747311896059/posts/3380030222201079", "summary": "The discussion examines the tension between secular UK legal rights and diverse Islamic interpretations regarding women&#x27;s access to cemeteries, particularly during burials."}, {"group": "Beechdale Community Partnership", "type": "Locality", "category": "Local Government", "issue": "Councillor Communication", "date": "2026-07-30", "comments": 10, "reactions": 10, "link": "https://www.facebook.com/groups/1457262554850677/posts/2155897034987222", "summary": "Local residents and a former councillor are expressing significant dissatisfaction with Reform UK representatives over issues including HMO planning approvals, perceived political bias in development projects, and a failure to address anti-social behaviour and declining local amenities."}, {"group": "Beechdale Community Partnership", "type": "Locality", "category": "Economy", "issue": "Post Office Closure", "date": "2026-07-31", "comments": 3, "reactions": 3, "link": "https://www.facebook.com/groups/1457262554850677/posts/2157157081527884", "summary": "Local residents are reacting to the closure of a Post Office branch by encouraging community lobbying and light-heartedly commenting on a man pictured waiting outside the shut premises."}, {"group": "Bloxwich Community Group", "type": "Locality", "category": "Local Government", "issue": "Election Results Impact", "date": "2026-07-31", "comments": 6, "reactions": 16, "link": "https://www.facebook.com/groups/846204072588201/posts/2222144924994102", "summary": "The discourse centres on the tension between a former independent councillor’s frustration over losing his seat to Reform UK candidates and a divided local electorate debating whether national populist rhetoric or established community representation better serves the ward&#x27;s needs."}, {"group": "Mossley GB", "type": "", "category": "Local Government", "issue": "Public Space Maintenance", "date": "2026-07-31", "comments": 2, "reactions": 0, "link": "https://www.facebook.com/groups/118723864940258/posts/4599226626889937", "summary": "The community is celebrating Etherow Lodge and Mossley Parks retaining their Green Flag Award status, highlighting the essential collaborative efforts of local volunteers and the council in maintaining these valued green spaces."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Cultural issues", "issue": "Religious Gender Norms", "date": "2026-08-01", "comments": 1, "reactions": 0, "link": "https://www.facebook.com/groups/1149747311896059/posts/3381883778682390", "summary": "The discourse centres on the religious condemnation of gender non-conformity and the public expression of non-heteronormative identities, asserting that such behaviours categorise individuals as a moral threat to the integrity of the Muslim community."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Benefits", "issue": "Emergency Food Aid", "date": "2026-08-03", "comments": 3, "reactions": 7, "link": "https://www.facebook.com/groups/1149747311896059/posts/3385445754992859", "summary": "A vulnerable individual&#x27;s request for emergency food assistance following a period of homelessness has been met with both scepticism regarding the authenticity of their profile and offers of practical support."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Housing", "issue": "Rental Discrimination", "date": "2026-08-03", "comments": 6, "reactions": 1, "link": "https://www.facebook.com/groups/1149747311896059/posts/3385239988346769", "summary": "The advertisement for a local rental property has prompted criticism regarding the legality of its &quot;no Universal Credit&quot; policy and the anonymity of the landlord."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Crime", "issue": "Vehicle Theft", "date": "2026-08-04", "comments": 3, "reactions": 3, "link": "https://www.facebook.com/groups/1149747311896059/posts/3386237471580354", "summary": "A victim is appealing for public assistance and information following the theft of a vehicle containing significant sentimental and professional items from a residential driveway in Great Barr."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Cultural issues", "issue": "Cemetery Access Rules", "date": "2026-08-04", "comments": 6, "reactions": 9, "link": "https://www.facebook.com/groups/1149747311896059/posts/3386288841575217", "summary": "The discussion centres on the legal and ethical tensions between an individual&#x27;s right to photograph in a public cemetery and the cultural or religious sensitivities of bereaved families regarding privacy and respect."}, {"group": "Mossley GB", "type": "", "category": "Environmental", "issue": "Protected Species Sightings", "date": "2026-08-04", "comments": 1, "reactions": 2, "link": "https://www.facebook.com/groups/118723864940258/posts/4602849119861021", "summary": "The sighting of lapwings in Mossley highlights the local presence of a bird species currently on the conservation red list."}, {"group": "Bloxwich Community Group", "type": "Locality", "category": "Transport", "issue": "Bus Route Extensions", "date": "2026-08-04", "comments": 4, "reactions": 0, "link": "https://www.facebook.com/groups/846204072588201/posts/2228205987721329", "summary": "The extension of the number 25 minibus service to the Goscote Lodge estate addresses the accessibility needs of elderly and disabled residents, though concerns remain regarding the limited frequency and capacity of the new provision."}, {"group": "Bloxwich Community Group", "type": "Locality", "category": "Businesses", "issue": "Street Trading Disputes", "date": "2026-08-05", "comments": 100, "reactions": 444, "link": "https://www.facebook.com/groups/846204072588201/posts/2229336074274987", "summary": "The community is divided over the use of pedestrian pavements for outdoor retail displays, debating whether such practices represent a public obstruction or a necessary means of revitalising the local economy and town centre vibrancy."}, {"group": "Dudley&#x27;s Field&#x27;s Chat/New&#x27;s", "type": "Locality", "category": "Education", "issue": "School Closures", "date": "2026-08-05", "comments": 2, "reactions": 0, "link": "https://www.facebook.com/groups/211109675211723/posts/1049456011377081", "summary": "The community is being urged to protect the former Sneyd School site from vandalism and trespass to avoid jeopardising sensitive negotiations aimed at restoring the facility for mainstream and special educational needs provision."}, {"group": "Bloxwich Community Group", "type": "Locality", "category": "Environmental", "issue": "Fire Incidents", "date": "2026-08-05", "comments": 4, "reactions": 1, "link": "https://www.facebook.com/groups/846204072588201/posts/2229437644264830", "summary": "Local residents and commuters are reporting significant travel disruption and safety concerns caused by a persistent large-scale fire near the M6 and M5 motorway link in the Walsall area."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Crime", "issue": "Vehicle Theft", "date": "2026-08-06", "comments": 1, "reactions": 1, "link": "https://www.facebook.com/groups/2369573043212672/posts/3436873666482599", "summary": "A local resident is appealing for information regarding the theft of a distinctive grey Ford Transit company van from the Beechdale area."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Health", "issue": "Men&#x27;s Support Groups", "date": "2026-08-06", "comments": 3, "reactions": 3, "link": "https://www.facebook.com/groups/2369573043212672/posts/3436055096564456", "summary": "The post and associated comments highlight the vital role of a local walking group in fostering community spirit and providing a supportive space for men to improve their mental well-being through peer conversation."}, {"group": "Bloxwich Community Group", "type": "Locality", "category": "Local Government", "issue": "Policy Enforcement", "date": "2026-08-06", "comments": 31, "reactions": 40, "link": "https://www.facebook.com/groups/846204072588201/posts/2229956717546256", "summary": "The discussion centres on a former councillor&#x27;s demand for the enforcement or revision of Walsall Council’s 2009 shop display policy, contrasted with public criticism regarding the relevance of such regulations amidst broader economic and safety concerns."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Environmental", "issue": "Wildlife Conflicts", "date": "2026-08-07", "comments": 13, "reactions": 40, "link": "https://www.facebook.com/groups/2369573043212672/posts/3437087833127849", "summary": "Local residents are debating whether a distressing late-night disturbance on Hamilton Street involved a violent encounter between domestic pets or the ongoing nuisance of urban foxes."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Environmental", "issue": "Litter Accumulation", "date": "2026-08-07", "comments": 1, "reactions": 0, "link": "https://www.facebook.com/groups/2369573043212672/posts/3437744243062208", "summary": "Local residents are highlighting the need for litter clearance at Odell playing fields to address the accumulation of rubbish in the natural environment."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Immigration", "issue": "Care Worker Visa Rights", "date": "2026-08-07", "comments": 1, "reactions": 0, "link": "https://www.facebook.com/groups/1149747311896059/posts/3389409271263174", "summary": "The discourse advocates for the removal of visa restrictions on dependants for care workers to prevent family separation and ensure the long-term stability of the UK’s health and social care sectors."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Local Government", "issue": "Public Space Maintenance", "date": "2026-08-07", "comments": 3, "reactions": 3, "link": "https://www.facebook.com/groups/2369573043212672/posts/3437762446393721", "summary": "Local residents are expressing concern regarding the maintenance and safety of public spaces, specifically focusing on the management of overgrown grass and the hazardous state of a vandalised shopfront."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Transport", "issue": "Airport Disruptions", "date": "2026-08-07", "comments": 2, "reactions": 1, "link": "https://www.facebook.com/groups/2369573043212672/posts/3437986483037984", "summary": "Significant operational failures and baggage handling delays at Birmingham Airport, reportedly involving Swissport, are causing severe disruption and distress for travellers."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Crime", "issue": "Hit and Run", "date": "2026-08-08", "comments": 1, "reactions": 0, "link": "https://www.facebook.com/groups/2369573043212672/posts/3438503599652939", "summary": "A resident is seeking information to identify the driver of a white van responsible for a hit-and-run collision involving their parked car in Hadley Way."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Crime", "issue": "Care Worker Abuse", "date": "2026-08-08", "comments": 2, "reactions": 1, "link": "https://www.facebook.com/groups/1149747311896059/posts/3390936487777119", "summary": "The public is expressing outrage over a report of a care worker feeding an elderly woman dog food prior to her death, describing the incident as a significant personal injustice."}, {"group": "Walsall Public Group", "type": "Locality", "category": "Environmental", "issue": "Climate Emergency Declaration", "date": "2026-08-08", "comments": 9, "reactions": 13, "link": "https://www.facebook.com/groups/1619774512107836/posts/2281677292584218", "summary": "The debate centres on the contentious decision to revoke a local climate emergency declaration, highlighting a divide between those viewing it as a dangerous denial of environmental crises and those defending it as a pragmatic prioritisation of public finances during a cost-of-living crisis."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Housing", "issue": "Pub Conversions", "date": "2026-08-08", "comments": 17, "reactions": 36, "link": "https://www.facebook.com/groups/2369573043212672/posts/3438779372958695", "summary": "Local residents are discussing the redevelopment of The Crown Inn on Leamore Lane, which is being converted from a closed public house into residential flats."}, {"group": "Beechdale Community Partnership", "type": "Locality", "category": "Housing", "issue": "Payment Disputes", "date": "2026-08-08", "comments": 3, "reactions": 0, "link": "https://www.facebook.com/groups/1457262554850677/posts/2163979220845670", "summary": "Tenants are reporting significant financial distress due to a housing provider losing rent payments and refusing to accept bank statements as valid proof of payment."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Crime", "issue": "Arson Fire Setting", "date": "2026-08-09", "comments": 24, "reactions": 53, "link": "https://www.facebook.com/groups/2369573043212672/posts/3440064902830142", "summary": "Local residents are expressing outrage and calling for strict punitive measures against the youths responsible for starting a grass fire in Bloxwich, citing a perceived lack of parental discipline and respect."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Crime", "issue": "Cemetery Theft", "date": "2026-08-09", "comments": 17, "reactions": 25, "link": "https://www.facebook.com/groups/2369573043212672/posts/3439765909526708", "summary": "The discussion centres on the distressing disappearance of sentimental plants and ornaments from graves at Bloxwich Cemetery, debating whether these losses result from strict council maintenance policies or targeted theft by the public."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Crime", "issue": "Youth Antisocial Behavior", "date": "2026-08-09", "comments": 6, "reactions": 131, "link": "https://www.facebook.com/groups/2369573043212672/posts/3439742726195693", "summary": "The community is divided over a report of children engaging in dangerous road behaviour and directing vitriolic, racist abuse at a motorist, with some residents condemning the lack of parental discipline while others urge empathy for the youths&#x27; backgrounds."}, {"group": "Bloxwich Community Group", "type": "Locality", "category": "Environmental", "issue": "Barking Dogs", "date": "2026-08-09", "comments": 7, "reactions": 2, "link": "https://www.facebook.com/groups/846204072588201/posts/2232703520604909", "summary": "Residents are debating the cause and impact of persistent dog barking on the estate, balancing welfare concerns regarding the heat against frustration over noise nuisance and inconsiderate ownership."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Health", "issue": "GP Practice Recommendations", "date": "2026-08-09", "comments": 12, "reactions": 9, "link": "https://www.facebook.com/groups/2369573043212672/posts/3439817739521525", "summary": "Local residents are seeking and sharing recommendations for GP surgeries, with a strong preference for Mossley Fields and notable criticism regarding appointment availability at Pinfold Medical Centre."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Housing", "issue": "Pub Conversions", "date": "2026-08-09", "comments": 11, "reactions": 36, "link": "https://www.facebook.com/groups/2369573043212672/posts/3439169456253020", "summary": "Local residents are expressing concern and nostalgia regarding the uncertain future of The Bell pub, amidst reports of vandalism, stalled building works, and contentious planning applications to convert the site into a convenience store and flats."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Crime", "issue": "Vehicle Theft", "date": "2026-08-10", "comments": 1, "reactions": 1, "link": "https://www.facebook.com/groups/2369573043212672/posts/3436080523228580", "summary": "The theft of a black Yamaha scooter from outside a takeaway has caused significant distress to an individual with epilepsy, as the loss of the vehicle represents a major setback to their newly regained independence."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Crime", "issue": "Stalking Harassment", "date": "2026-08-10", "comments": 53, "reactions": 252, "link": "https://www.facebook.com/groups/2369573043212672/posts/3441180589385240", "summary": "The discussion centres on a female runner’s encounter with a suspicious vehicle, prompting community warnings about personal safety and a contentious debate regarding the perceived link between rising crime and immigration."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Local Government", "issue": "Accessibility Services", "date": "2026-08-10", "comments": 18, "reactions": 27, "link": "https://www.facebook.com/groups/2369573043212672/posts/3440518169451482", "summary": "Prospective swimmers with disabilities are seeking information regarding the accessibility of local pool facilities, specifically focusing on the availability of hoists, handrails, and suitable steps to accommodate mobility and weight requirements."}, {"group": "Bloxwich Community Group", "type": "Locality", "category": "Crime", "issue": "Police Response Incidents", "date": "2026-08-11", "comments": 5, "reactions": 1, "link": "https://www.facebook.com/groups/846204072588201/posts/2233558430519418", "summary": "Local residents are speculating on the reasons behind a significant police presence on Booth Street, ranging from potential criminal activity to routine occurrences."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Crime", "issue": "Deliberate Fire Setting", "date": "2026-08-11", "comments": 1, "reactions": 0, "link": "https://www.facebook.com/groups/1149747311896059/posts/3393526217518146", "summary": "The community is being urged to report information regarding a recent surge in deliberate arson attacks in West Bromwich that have resulted in injuries to emergency personnel."}, {"group": "Walsall Asian Community News &amp; Views", "type": "Demographic", "category": "Cultural issues", "issue": "Gender-Based Employment", "date": "2026-08-11", "comments": 2, "reactions": 1, "link": "https://www.facebook.com/groups/1149747311896059/posts/3393643560839745", "summary": "The recruitment advertisement for female-only staff at a Subway branch has prompted criticism regarding the legality of gender-based discrimination in hiring practices."}, {"group": "Walsall Public Group", "type": "Locality", "category": "Education", "issue": "School Fines", "date": "2026-08-11", "comments": 1, "reactions": 0, "link": "https://www.facebook.com/groups/1619774512107836/posts/2284747482277199", "summary": "The petition and associated campaign advocate for the abolition of fines issued to parents for unauthorised school absences."}, {"group": "Bloxwich Community Group", "type": "Locality", "category": "Environmental", "issue": "Business Responsibility", "date": "2026-08-11", "comments": 7, "reactions": 3, "link": "https://www.facebook.com/groups/846204072588201/posts/2234425287099399", "summary": "Stakeholders are debating the necessity of rigorous enforcement against illicit trade and fly-tipping alongside the importance of shopkeeper accountability, improved local infrastructure, and youth engagement initiatives to address anti-social behaviour."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Housing", "issue": "Office to Residential", "date": "2026-08-11", "comments": 10, "reactions": 57, "link": "https://www.facebook.com/groups/2369573043212672/posts/3441799779323321", "summary": "Local residents are debating a planning proposal to convert a large office building into flats, expressing concerns over parking, housing density, and the potential demographic of future occupants."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Businesses", "issue": "Pavement Obstruction", "date": "2026-08-12", "comments": 6, "reactions": 29, "link": "https://www.facebook.com/groups/2369573043212672/posts/3442444475925518", "summary": "Local residents are debating the safety and aesthetic impact of shops obstructing pavements with outdoor displays, highlighting concerns for pedestrian accessibility versus the potential decline of the high street."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Crime", "issue": "Vehicle Theft", "date": "2026-08-12", "comments": 1, "reactions": 0, "link": "https://www.facebook.com/groups/2369573043212672/posts/3442228465947119", "summary": "A local appeal has been launched to recover stolen children&#x27;s bicycles of high sentimental value following a vehicle theft and abandonment in the Cannock area."}, {"group": "Bloxwich Chit Chat", "type": "Locality", "category": "Transport", "issue": "Pavement Parking", "date": "2026-08-12", "comments": 4, "reactions": 4, "link": "https://www.facebook.com/groups/2369573043212672/posts/3441956832640949", "summary": "The discussion centres on the conflict between a wheelchair user&#x27;s accessibility concerns regarding a vehicle parked on a pavement and others&#x27; attempts to justify or question the illegality of the obstruction."}];
+
+const fmtFull = n => n.toLocaleString("en-GB");
+const SLOT_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)", "var(--s7)", "var(--s8)"];
+
+/* ── tooltip ────────────────────────────────────────── */
+const tip = document.getElementById("tip");
+function showTip(html, ev) {
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  moveTip(ev);
+}
+function moveTip(ev) {
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - pad;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+/* ── filter state (kind: group | type | category) ──── */
+let filter = null;
+function setFilter(kind, value) {
+  filter = (filter && filter.kind === kind && filter.value === value) ? null : { kind, value };
+  renderTable();
+  const bar = document.getElementById("filterbar");
+  if (filter) {
+    bar.classList.add("on");
+    document.getElementById("filterlabel").textContent = `Showing: ${filter.value} (${filter.kind})`;
+  } else bar.classList.remove("on");
+}
+document.getElementById("clearfilter").addEventListener("click", () => {
+  filter = null;
+  renderTable();
+  document.getElementById("filterbar").classList.remove("on");
+});
+
+/* ── header / tiles ─────────────────────────────────── */
+const dates = POSTS.map(p => p.date).sort();
+const dateFrom = dates[0], dateTo = dates[dates.length - 1];
+const groups = [...new Set(POSTS.map(p => p.group))];
+const totalComments = POSTS.reduce((a, p) => a + p.comments, 0);
+const categories = [...new Set(POSTS.map(p => p.category))];
+const typedGroups = new Set(POSTS.filter(p => p.type).map(p => p.group));
+
+document.getElementById("n-posts-head").textContent = POSTS.length;
+document.getElementById("n-comments-head").textContent = fmtFull(totalComments);
+document.getElementById("n-groups-head").textContent = groups.length;
+document.getElementById("date-span-head").textContent = `${dateFrom} to ${dateTo}`;
+document.getElementById("date-span-trend").textContent = `${dateFrom} to ${dateTo}`;
+document.getElementById("n-table").textContent = POSTS.length;
+document.getElementById("n-posts-foot").textContent = POSTS.length;
+
+document.getElementById("tiles").innerHTML = [
+  ["Political posts", POSTS.length, "distinct posts in the export"],
+  ["Comments", fmtFull(totalComments), "on those posts"],
+  ["Groups", groups.length, "posting political content"],
+  ["Categories", categories.length, "topics represented"],
+  ["Days covered", dates.length ? new Set(dates).size : 0, `${dateFrom} → ${dateTo}`],
+  ["Groups typed", `${typedGroups.size}/${groups.length}`, "have a type assigned"],
+].map(([k, v, s]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+
+/* ── generic ranked horizontal bar chart ───────────── */
+/* items: [{label, value, key}] sorted desc by value already. */
+function drawRankBar(svgId, items, opts) {
+  const svg = document.getElementById(svgId);
+  const rowH = 30, labelW = opts.labelW || 190, valueW = 42, W = opts.width || 480;
+  const H = items.length * rowH + 8;
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const max = Math.max(...items.map(it => it.value), 1);
+  const plotW = W - labelW - valueW - 8;
+  let out = "";
+  const step = max > 40 ? Math.ceil(max / 5 / 10) * 10 : Math.max(1, Math.ceil(max / 5));
+  for (let g = step; g <= max; g += step)
+    out += `<line x1="${labelW + g / max * plotW}" y1="0" x2="${labelW + g / max * plotW}" y2="${H - 4}" stroke="var(--grid)" stroke-width="1"></line>`;
+  out += `<line x1="${labelW}" y1="0" x2="${labelW}" y2="${H - 4}" stroke="var(--baseline)" stroke-width="1"></line>`;
+  items.forEach((it, i) => {
+    const y = i * rowH + 5, h = rowH - 11;
+    const w = it.value / max * plotW;
+    out += `<text x="${labelW - 8}" y="${y + h / 2 + 4}" text-anchor="end" fill="var(--ink-2)">${it.label}</text>`;
+    out += `<path class="bar-rect" data-i="${i}" tabindex="0" role="button" aria-label="${it.label}: ${it.value}"
+      d="M${labelW},${y} h${Math.max(w - 4, 0)} a4,4 0 0 1 4,4 v${h - 8} a4,4 0 0 1 -4,4 h-${Math.max(w - 4, 0)} Z"
+      fill="var(--bar)"></path>`;
+    out += `<text x="${labelW + w + 7}" y="${y + h / 2 + 4}" fill="var(--ink)" style="font-weight:600">${fmtFull(it.value)}</text>`;
+  });
+  svg.innerHTML = out;
+  document.querySelectorAll(`#${svgId} .bar-rect`).forEach(el => {
+    const it = items[+el.dataset.i];
+    el.addEventListener("mousemove", ev => showTip(`<div class="t-head">${it.label}</div>${fmtFull(it.value)} ${opts.unit}`, ev));
+    el.addEventListener("mouseleave", hideTip);
+    if (opts.onPick) {
+      el.addEventListener("click", () => opts.onPick(it));
+      el.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); opts.onPick(it); } });
+    }
+  });
+}
+
+/* ── most posts / most comments ────────────────────── */
+function groupAgg() {
+  const m = new Map();
+  for (const p of POSTS) {
+    if (!m.has(p.group)) m.set(p.group, { group: p.group, type: p.type, posts: 0, comments: 0 });
+    const g = m.get(p.group);
+    g.posts += 1; g.comments += p.comments;
+  }
+  return [...m.values()];
+}
+const GROUPS = groupAgg();
+
+const groupsByPosts = [...GROUPS].sort((a, b) => b.posts - a.posts || b.comments - a.comments);
+
+drawRankBar("bar-posts",
+  groupsByPosts.map(g => ({ label: g.group, value: g.posts, key: g.group })),
+  { unit: "posts", onPick: it => setFilter("group", it.key) });
+
+drawRankBar("bar-comments",
+  [...GROUPS].sort((a, b) => b.comments - a.comments).map(g => ({ label: g.group, value: g.comments, key: g.group })),
+  { unit: "comments", onPick: it => setFilter("group", it.key) });
+
+/* ── activity by type ───────────────────────────────── */
+(function typeChart() {
+  const wrap = document.getElementById("type-chart-wrap");
+  const typed = GROUPS.filter(g => g.type);
+  if (!typed.length) {
+    wrap.innerHTML = `<div class="empty-state">No groups have been typed yet.
+      Add a label per group in <code>blakenall_opinion_data/group_types.csv</code> and re-run
+      <code>python3 build_blakenall_activity_viewer.py</code> to see activity rolled up by type.</div>`;
+    return;
+  }
+  const byType = new Map();
+  for (const g of typed) {
+    if (!byType.has(g.type)) byType.set(g.type, { type: g.type, posts: 0, comments: 0, groups: [] });
+    const t = byType.get(g.type);
+    t.posts += g.posts; t.comments += g.comments; t.groups.push(g.group);
+  }
+  const rows = [...byType.values()].sort((a, b) => (b.posts + b.comments) - (a.posts + a.comments));
+
+  wrap.innerHTML = `<div class="legend-row">
+      <span class="lg"><span class="sw" style="background:var(--s1)"></span>Posts</span>
+      <span class="lg"><span class="sw" style="background:var(--s2)"></span>Comments</span>
+    </div>
+    <div class="chart-scroll"><svg id="type-bar" role="img" aria-label="Stacked bar chart of posts and comments per group type"></svg></div>
+    <p class="note">${GROUPS.length - typed.length} of ${GROUPS.length} group(s) still untyped &mdash; excluded from this chart.</p>`;
+
+  const svg = document.getElementById("type-bar");
+  const rowH = 34, labelW = 170, W = 560, H = rows.length * rowH + 8;
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const max = Math.max(...rows.map(r => r.posts + r.comments), 1);
+  const plotW = W - labelW - 50;
+  let out = `<line x1="${labelW}" y1="0" x2="${labelW}" y2="${H - 4}" stroke="var(--baseline)" stroke-width="1"></line>`;
+  rows.forEach((r, i) => {
+    const y = i * rowH + 6, h = rowH - 13;
+    const wPosts = r.posts / max * plotW, wComments = r.comments / max * plotW;
+    out += `<text x="${labelW - 8}" y="${y + h / 2 + 4}" text-anchor="end" fill="var(--ink-2)">${r.type}</text>`;
+    out += `<rect class="bar-rect" data-i="${i}" data-part="posts" x="${labelW}" y="${y}" width="${Math.max(wPosts, 1)}" height="${h}" rx="3" fill="var(--s1)"></rect>`;
+    out += `<rect class="bar-rect" data-i="${i}" data-part="comments" x="${labelW + wPosts + 2}" y="${y}" width="${Math.max(wComments, 1)}" height="${h}" rx="3" fill="var(--s2)"></rect>`;
+    out += `<text x="${labelW + wPosts + wComments + 10}" y="${y + h / 2 + 4}" fill="var(--ink)" style="font-weight:600;font-size:12px">${r.posts + r.comments}</text>`;
+  });
+  svg.innerHTML = out;
+  svg.querySelectorAll(".bar-rect").forEach(el => {
+    const r = rows[+el.dataset.i], part = el.dataset.part;
+    el.addEventListener("mousemove", ev => showTip(
+      `<div class="t-head">${r.type}</div>${r.posts} posts, ${r.comments} comments<br><span class="t-dim">${r.groups.join(", ")}</span>`, ev));
+    el.addEventListener("mouseleave", hideTip);
+  });
+})();
+
+/* ── top issues per group ───────────────────────────── */
+(function topIssues() {
+  const key = (g, i) => g + " " + i;
+  const stats = new Map(); // key -> {group, issue, posts, comments}
+  for (const p of POSTS) {
+    const k = key(p.group, p.issue);
+    if (!stats.has(k)) stats.set(k, { group: p.group, issue: p.issue, posts: 0, comments: 0 });
+    const s = stats.get(k);
+    s.posts += 1; s.comments += p.comments;
+  }
+  const byGroup = new Map();
+  for (const s of stats.values()) {
+    if (!byGroup.has(s.group)) byGroup.set(s.group, []);
+    byGroup.get(s.group).push(s);
+  }
+
+  let rowsHtml = "";
+  for (const g of groupsByPosts) {
+    const issues = (byGroup.get(g.group) || [])
+      .sort((a, b) => b.posts - a.posts || b.comments - a.comments)
+      .slice(0, 3);
+    issues.forEach((it, i) => {
+      rowsHtml += `<tr>
+        ${i === 0 ? `<td rowspan="${issues.length}" style="font-weight:600">${g.group}</td>` : ""}
+        <td>${it.issue}</td>
+        <td class="num">${it.posts}</td>
+        <td class="num">${fmtFull(it.comments)}</td>
+      </tr>`;
+    });
+  }
+  document.getElementById("issues-tbody").innerHTML = rowsHtml;
+})();
+
+/* ── daily trend (stacked bars) ─────────────────────── */
+(function trend() {
+  const byDay = new Map();
+  for (const p of POSTS) {
+    if (!byDay.has(p.date)) byDay.set(p.date, { date: p.date, posts: 0, comments: 0 });
+    const d = byDay.get(p.date);
+    d.posts += 1; d.comments += p.comments;
+  }
+  const allDays = [];
+  let d = new Date(dateFrom);
+  const end = new Date(dateTo);
+  while (d <= end) {
+    const iso = d.toISOString().slice(0, 10);
+    allDays.push(byDay.get(iso) || { date: iso, posts: 0, comments: 0 });
+    d.setDate(d.getDate() + 1);
+  }
+
+  const svg = document.getElementById("trend");
+  const W = Math.max(560, allDays.length * 34), H = 220, padB = 34, padT = 10, padL = 34;
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const maxV = Math.max(...allDays.map(x => x.posts + x.comments), 1);
+  const plotH = H - padT - padB;
+  const bw = (W - padL - 10) / allDays.length;
+  let out = "";
+  for (let g = 0; g <= maxV; g += Math.max(1, Math.ceil(maxV / 4))) {
+    const y = padT + plotH - g / maxV * plotH;
+    out += `<line x1="${padL}" y1="${y}" x2="${W - 6}" y2="${y}" stroke="var(--grid)" stroke-width="1"></line>`;
+    out += `<text x="${padL - 6}" y="${y + 3}" text-anchor="end" fill="var(--muted)" style="font-size:10px">${g}</text>`;
+  }
+  allDays.forEach((day, i) => {
+    const x = padL + i * bw + bw * 0.15, w = bw * 0.7;
+    const hPosts = day.posts / maxV * plotH, hComments = day.comments / maxV * plotH;
+    const yComments = padT + plotH - hComments;
+    const yPosts = yComments - hPosts;
+    out += `<rect class="bar-rect" data-i="${i}" data-part="comments" x="${x}" y="${yComments}" width="${w}" height="${Math.max(hComments, day.comments ? 1 : 0)}" fill="var(--s2)"></rect>`;
+    out += `<rect class="bar-rect" data-i="${i}" data-part="posts" x="${x}" y="${yPosts}" width="${w}" height="${Math.max(hPosts, day.posts ? 1 : 0)}" fill="var(--s1)"></rect>`;
+    if (i % Math.ceil(allDays.length / 10 || 1) === 0)
+      out += `<text x="${x + w / 2}" y="${H - 10}" text-anchor="middle" fill="var(--muted)" style="font-size:9.5px">${day.date.slice(5)}</text>`;
+  });
+  svg.innerHTML = out;
+  svg.querySelectorAll(".bar-rect").forEach(el => {
+    const day = allDays[+el.dataset.i];
+    el.addEventListener("mousemove", ev => showTip(
+      `<div class="t-head">${day.date}</div>${day.posts} posts, ${day.comments} comments`, ev));
+    el.addEventListener("mouseleave", hideTip);
+  });
+})();
+
+/* ── category donut ─────────────────────────────────── */
+(function catPie() {
+  const counts = new Map();
+  for (const p of POSTS) counts.set(p.category, (counts.get(p.category) || 0) + 1);
+  let sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  let items = sorted.slice(0, 7).map(([label, count], i) => ({ label, count, color: SLOT_COLORS[i], cat: label }));
+  if (sorted.length > 7) {
+    const otherN = sorted.slice(7).reduce((a, [, n]) => a + n, 0);
+    items.push({ label: "other", count: otherN, color: "var(--muted)" });
+  }
+  const total = items.reduce((a, it) => a + it.count, 0);
+  const svg = document.getElementById("cat-pie");
+  const cx = 90, cy = 90, r = 68, inner = 42;
+  let a0 = -Math.PI / 2, paths = "";
+  items.forEach((it, i) => {
+    if (!it.count) return;
+    const a1 = a0 + (it.count / total) * Math.PI * 2;
+    const large = (a1 - a0) > Math.PI ? 1 : 0;
+    const p = (a, rad) => `${cx + rad * Math.cos(a)},${cy + rad * Math.sin(a)}`;
+    paths += `<path class="slice" data-i="${i}" tabindex="0" role="button" aria-label="${it.label}: ${it.count}"
+      d="M${p(a0, r)} A${r},${r} 0 ${large} 1 ${p(a1, r)} L${p(a1, inner)} A${inner},${inner} 0 ${large} 0 ${p(a0, inner)} Z"
+      fill="${it.color}" stroke="var(--card)" stroke-width="2"></path>`;
+    a0 = a1;
+  });
+  svg.innerHTML = paths +
+    `<text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="var(--ink)" style="font-size:24px;font-weight:600">${total}</text>` +
+    `<text x="${cx}" y="${cy + 15}" text-anchor="middle" fill="var(--muted)" style="font-size:10px;letter-spacing:0.08em">POSTS</text>`;
+
+  document.getElementById("cat-legend").innerHTML = items.map((it, i) =>
+    `<div class="row" data-i="${i}" tabindex="0" role="button">
+       <span class="swatch" style="background:${it.color}"></span>
+       <span class="lab">${it.label}</span><span class="n">${it.count}</span>
+     </div>`).join("");
+
+  document.querySelectorAll("#cat-pie .slice, #cat-legend .row").forEach(el => {
+    const i = +el.dataset.i;
+    el.addEventListener("mousemove", ev => showTip(
+      `<div class="t-head">${items[i].label}</div>${items[i].count} of ${total} posts (${Math.round(items[i].count / total * 100)}%)`, ev));
+    el.addEventListener("mouseleave", hideTip);
+    el.addEventListener("click", () => { if (items[i].cat) setFilter("category", items[i].cat); });
+    el.addEventListener("keydown", ev => { if ((ev.key === "Enter" || ev.key === " ") && items[i].cat) { ev.preventDefault(); setFilter("category", items[i].cat); } });
+  });
+})();
+
+/* ── table ──────────────────────────────────────────── */
+function renderTable() {
+  const rows = POSTS
+    .filter(p => !filter
+      || (filter.kind === "group" && p.group === filter.value)
+      || (filter.kind === "type" && p.type === filter.value)
+      || (filter.kind === "category" && p.category === filter.value))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById("tbody").innerHTML = rows.map(p => `
+    <tr>
+      <td class="datecell">${p.date}</td>
+      <td><a href="${p.link}" target="_blank" rel="noopener">${p.group}</a></td>
+      <td>${p.type ? `<span class="pill" data-kind="type" data-val="${p.type}" tabindex="0" role="button">${p.type}</span>` : "&mdash;"}</td>
+      <td><span class="pill" data-kind="category" data-val="${p.category}" tabindex="0" role="button">${p.category}</span></td>
+      <td class="num">${fmtFull(p.comments)}</td>
+      <td class="num">${fmtFull(p.reactions)}</td>
+      <td class="summarycell">${p.summary || "&mdash;"}</td>
+    </tr>`).join("");
+  document.querySelectorAll("#tbody .pill").forEach(el => {
+    el.addEventListener("click", () => setFilter(el.dataset.kind, el.dataset.val));
+    el.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setFilter(el.dataset.kind, el.dataset.val); } });
+  });
+}
+renderTable();
+</script>
