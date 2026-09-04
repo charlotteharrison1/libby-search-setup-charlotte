@@ -21,10 +21,13 @@ from pathlib import Path
 import pandas as pd
 
 from libby_core import assessment, descriptions
-from uk import data_loading, geo, parsing
+from uk import about_context, data_loading, geo, parsing
+from uk.generate_search import slugify
 from uk.settings import (
+    ABOUT_PAGES_DIR,
     DESCRIPTIONS_PATH,
     DENSITIES_PATH,
+    DISCARDED_DIR,
     GEOJSON_PATH,
     INTERMEDIATE_DIR,
     NEW_SCRAPE_PATH,
@@ -143,7 +146,7 @@ def _aggregate_new_groups(df_exploded: pd.DataFrame, pcon_codes: set[str]) -> pd
                 # group found by two target types counts under both. Guarded —
                 # older master files predate these columns — and "" (untagged
                 # rows) is excluded. Logged per constituency, then dropped by
-                # _combine_and_filter's keep_cols, so outputs are unchanged.
+                # _combine's keep_cols, so outputs are unchanged.
                 "target_types": sorted(set(g["target_type"].dropna()) - {""}) if "target_type" in g.columns else [],
                 "target_sources": sorted(set(g["target_source"].dropna()) - {""}) if "target_source" in g.columns else [],
             }),
@@ -154,13 +157,15 @@ def _aggregate_new_groups(df_exploded: pd.DataFrame, pcon_codes: set[str]) -> pd
     return agg
 
 
-def _combine_and_filter(
+def _combine(
     new_groups: pd.DataFrame,
     addon_groups: pd.DataFrame,
     pcon_map_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Combine new-scrape groups with add-on groups, filter to public, dedupe,
-    and merge constituency names."""
+    """Combine new-scrape groups with add-on groups and merge constituency
+    names. Drops no rows — the public/dedupe/locality filters are applied
+    separately in run() so each can be individually logged to the discard
+    log (see _record_discards)."""
     keep_cols = ["PCON24CD", "name", "url", "public_y_n", "members", "posts_a_month", "locality", "locality_name"]
 
     parts = [new_groups[[c for c in keep_cols if c in new_groups.columns]]]
@@ -168,10 +173,6 @@ def _combine_and_filter(
         parts.append(addon_groups[[c for c in keep_cols if c in addon_groups.columns]])
 
     combined = pd.concat(parts, axis=0, ignore_index=True)
-
-    # Public only
-    combined = combined[combined.public_y_n == True].copy()  # noqa: E712
-
     combined = combined.sort_values(
         by=["PCON24CD", "members", "posts_a_month"], ascending=False
     )
@@ -181,10 +182,58 @@ def _combine_and_filter(
     combined = combined.merge(
         pcon_unique[["PCON24CD", "PCON24NM"]], on="PCON24CD", how="left"
     )
-
-    combined = combined.drop_duplicates(subset=["url"])
-    combined = combined[combined["locality"] != "X"]
     return combined
+
+
+# ── discard logging ──────────────────────────────────────────────────────
+
+# Columns for discarded/<code>.csv and the combined discarded*.csv — fixed
+# so an empty discard list still writes a header, and so pipeline_ward.py
+# (which reuses _record_discards) produces the same shape.
+DISCARD_COLUMNS = [
+    "PCON24CD", "PCON24NM", "url", "name", "members", "posts_a_month",
+    "locality", "first_assessment", "stage", "reason",
+]
+
+
+def _record_discards(
+    before: pd.DataFrame,
+    after: pd.DataFrame,
+    stage: str,
+    reason: str,
+    **area_cols,
+) -> list[dict]:
+    """Diff `before`/`after` by row identity and return one discard record
+    per row dropped at this stage, tagged with `stage`/`reason` plus any
+    constant area-identifying columns (e.g. PCON24CD=..., PCON24NM=... for
+    the constituency pipeline; ward_name=..., local_authority=... for the
+    ward pipeline).
+
+    Diffs on a `_row_id` column (assigned once per area, before any
+    filtering) rather than `url`, because a dedupe step can drop a row
+    whose url survives via a different row — a url-set diff would miss that
+    drop entirely.
+    """
+    if before.empty or "_row_id" not in before.columns:
+        return []
+    dropped_ids = set(before["_row_id"]) - set(after["_row_id"])
+    if not dropped_ids:
+        return []
+    dropped = before[before["_row_id"].isin(dropped_ids)]
+    records = []
+    for _, r in dropped.iterrows():
+        records.append({
+            **area_cols,
+            "url": r.get("url"),
+            "name": r.get("name"),
+            "members": r.get("members"),
+            "posts_a_month": r.get("posts_a_month"),
+            "locality": r.get("locality"),
+            "first_assessment": r.get("first_assessment"),
+            "stage": stage,
+            "reason": reason,
+        })
+    return records
 
 
 _BUY_SELL_PATTERN = re.compile(
@@ -198,7 +247,7 @@ def _targeting_breakdown(pcon24nm: str, final: pd.DataFrame, new_groups: pd.Data
     """Per-group targeting report (same shape as pipeline_ward.py's
     targeting_breakdown_{ward}.csv): one row per final surviving group, with
     the target types/sources that found it '; '-joined. The tag sets live on
-    the aggregated new-scrape groups (they're dropped by _combine_and_filter's
+    the aggregated new-scrape groups (they're dropped by _combine's
     keep_cols), so they're merged back onto the final groups by url here. Geo
     add-on groups were never searched for directly and get blank tags — the
     locality column (A/L/R vs C) already identifies them. Also logs a count
@@ -251,7 +300,12 @@ def _update_targeting_master(pcon24nm: str, breakdown: pd.DataFrame) -> None:
         rows.loc[addon.values, "sources"] = "geo add on"
 
     if master_path.exists():
-        master = pd.read_csv(master_path, dtype=str).fillna("")
+        # latin-1, not utf-8: master_path is written with errors="surrogatepass"
+        # (group names can carry unpaired surrogates from mangled scraped
+        # emoji), which produces byte sequences strict utf-8 decoding
+        # rejects — same reasoning as this module's output.csv/groups_*.csv
+        # reads.
+        master = pd.read_csv(master_path, dtype=str, encoding="latin-1").fillna("")
         master = master[master["constituency"] != pcon24nm]
         master = pd.concat([master, rows], ignore_index=True)
     else:
@@ -312,6 +366,7 @@ def run(
     constituency_name: str | None = None,
     stop_before_ai_assessment: bool = False,
     input_path: Path | None = None,
+    use_context: bool = False,
 ):
     # ── Phase 1: One-time setup ─────────────────────────────────────────────
     if input_path:
@@ -376,6 +431,12 @@ def run(
 
         if not stop_before_ai_assessment and intermediate_path.exists():
             logger.info("Skipping (already done): %s", pcon24nm)
+            if not (DISCARDED_DIR / f"{pcon24cd}.csv").exists():
+                logger.info(
+                    "  (no discarded/%s.csv — this constituency was processed before "
+                    "discard logging existed; delete its intermediate/%s.csv to "
+                    "reprocess and backfill one)", pcon24cd, pcon24cd,
+                )
             continue
 
         logger.info("Processing: %s", pcon24nm)
@@ -394,15 +455,60 @@ def run(
         else:
             addon_groups = pd.DataFrame()
 
-        combined = _combine_and_filter(new_groups_c, addon_groups, pcon_map_df)
+        # _row_id identifies each physical row through every filter below
+        # (independent of the pandas index), so a dedupe drop can be
+        # attributed even though its url survives via a different row. See
+        # _record_discards.
+        combined = _combine(new_groups_c, addon_groups, pcon_map_df).reset_index(drop=True)
+        combined["_row_id"] = combined.index
+        area_cols = {"PCON24CD": pcon24cd, "PCON24NM": pcon24nm}
+        discards: list[dict] = []
+
+        before = combined
+        combined = combined[combined.public_y_n == True].copy()  # noqa: E712
+        discards += _record_discards(
+            before, combined, "public_filter",
+            "Not marked public (private, or public/private unknown)",
+            **area_cols,
+        )
+
+        before = combined
+        combined = combined.drop_duplicates(subset=["url"])
+        discards += _record_discards(
+            before, combined, "dedupe",
+            "Duplicate group url (kept the higher-ranked occurrence)",
+            **area_cols,
+        )
+
+        before = combined
+        combined = combined[combined["locality"] != "X"]
+        discards += _record_discards(
+            before, combined, "locality_filter",
+            "Locality classified as national/too broad (X)",
+            **area_cols,
+        )
+
+        before = combined
         combined = _drop_buy_sell(combined)
+        discards += _record_discards(
+            before, combined, "buy_sell",
+            "Group name matched buy/sell/marketplace pattern",
+            **area_cols,
+        )
+
+        before = combined
         combined = combined[
             combined["posts_a_month"].isna() | (combined["posts_a_month"] >= 10)
         ].copy()
+        discards += _record_discards(
+            before, combined, "activity_filter",
+            "Posts per month below threshold (< 10)",
+            **area_cols,
+        )
 
         if stop_before_ai_assessment:
             out_path = OUTPUT_DIR / f"{pcon24nm}-intermediate.csv"
-            combined.to_csv(
+            combined.drop(columns=["_row_id"]).to_csv(
                 out_path,
                 index=False,
                 encoding="utf-8",
@@ -411,7 +517,15 @@ def run(
             logger.info(
                 "Saved %d rows (pre-assessment) → %s", len(combined), out_path
             )
-            return combined
+            discarded_path = DISCARDED_DIR / f"{pcon24cd}.csv"
+            pd.DataFrame(discards, columns=DISCARD_COLUMNS).to_csv(
+                discarded_path, index=False, encoding="utf-8", errors="surrogatepass"
+            )
+            logger.info(
+                "  Saved %d discarded rows (pre-assessment stages only) → %s",
+                len(discards), discarded_path,
+            )
+            return combined.drop(columns=["_row_id"])
 
         desc = descriptions.ensure_description(
             area_id=pcon24cd,
@@ -427,24 +541,68 @@ def run(
         if "first_assessment" not in combined.columns:
             combined["first_assessment"] = None
 
+        context_column = None
+        if use_context:
+            about_path = ABOUT_PAGES_DIR / f"{slugify(pcon24nm)}_about.csv"
+            about_lookup = about_context.load_about_context(about_path)
+            if about_lookup:
+                combined["about_context"] = combined["url"].map(about_lookup)
+                n_matched = combined["about_context"].notna().sum()
+                logger.info(
+                    "  %d/%d groups matched About context for %s",
+                    n_matched, len(combined), pcon24nm,
+                )
+                context_column = "about_context"
+
         if not combined.empty:
             assessed = assessment.assess_groups(
                 df=combined,
                 area_description=desc,
                 area_kind=AREA_KIND,
+                context_column=context_column,
             )
             if "first_assessment" in assessed.columns:
                 combined["first_assessment"] = assessed["first_assessment"].values
 
-        final_c = combined[
-            (combined["first_assessment"] != "No") & (combined["members"] > 50)
-        ].copy()
+        before = combined
+        final_c = combined[combined["first_assessment"] != "No"].copy()
+        discards += _record_discards(
+            before, final_c, "ai_assessment",
+            'AI assessed group as not local to the area ("No")',
+            **area_cols,
+        )
+
+        before = final_c
+        final_c = final_c[final_c["members"] > 50].copy()
+        discards += _record_discards(
+            before, final_c, "members_filter",
+            "Member count <= 50",
+            **area_cols,
+        )
+
+        before = final_c
         final_c = _drop_unsure_churches(final_c, pcon24nm)
+        discards += _record_discards(
+            before, final_c, "church_heuristic",
+            'Assessed "Unsure" + church-pattern name, no area-name match',
+            **area_cols,
+        )
+
+        # about_context (when --context matched something) is prompt input
+        # only — the raw About-page text has no place in the shipped output
+        # schema, so it's dropped here rather than carried into groups_*.csv.
+        final_c = final_c.drop(columns=["_row_id", "about_context"], errors="ignore")
         final_c = final_c.sort_values(
             by=["PCON24CD", "members", "posts_a_month"],
             ascending=False,
             na_position="last",
         )
+
+        discarded_path = DISCARDED_DIR / f"{pcon24cd}.csv"
+        pd.DataFrame(discards, columns=DISCARD_COLUMNS).to_csv(
+            discarded_path, index=False, encoding="utf-8", errors="surrogatepass"
+        )
+        logger.info("  Saved %d discarded rows → %s", len(discards), discarded_path)
 
         breakdown = _targeting_breakdown(pcon24nm, final_c, new_groups_c)
         if not breakdown.empty:
@@ -502,6 +660,24 @@ def run(
         final_df.to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
         logger.info("Saved %d rows → %s", len(final_df), out_path)
 
+    # ── Combine per-constituency discard logs, same split as output.csv/groups_<Name>.csv ──
+    if constituency_name:
+        discarded_files = sorted(p for p in DISCARDED_DIR.glob("*.csv") if p.stem in allowed_codes)
+        discarded_out_path = OUTPUT_DIR / f"discarded_{constituency_name}.csv"
+    else:
+        discarded_files = sorted(DISCARDED_DIR.glob("*.csv"))
+        discarded_out_path = OUTPUT_DIR / "discarded.csv"
+
+    if discarded_files:
+        discarded_df = pd.concat(
+            (pd.read_csv(p, encoding="latin-1", on_bad_lines="skip") for p in discarded_files),
+            axis=0, ignore_index=True,
+        )
+    else:
+        discarded_df = pd.DataFrame(columns=DISCARD_COLUMNS)
+    discarded_df.to_csv(discarded_out_path, index=False, encoding="utf-8", errors="surrogatepass")
+    logger.info("Saved %d discarded rows → %s", len(discarded_df), discarded_out_path)
+
     if not final_df.empty:
         summary = (
             final_df.groupby("PCON24NM")
@@ -538,6 +714,15 @@ def main():
         default=None,
         help="Path to a scraped CSV file to process directly, instead of the master file.",
     )
+    parser.add_argument(
+        "--context",
+        action="store_true",
+        help=(
+            "For each constituency, look up uk/data/about_pages/<slug>_about.csv "
+            "and — if it exists — pass each group's own About-page text to the "
+            "LLM as extra context for the relevance assessment."
+        ),
+    )
     args = parser.parse_args()
 
     if args.stop_before_ai_assessment and not args.constituency:
@@ -548,6 +733,7 @@ def main():
         constituency_name=args.constituency,
         stop_before_ai_assessment=args.stop_before_ai_assessment,
         input_path=Path(args.input) if args.input else None,
+        use_context=args.context,
     )
 
 

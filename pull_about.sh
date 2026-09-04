@@ -28,7 +28,7 @@ REMOTE_BASE="/home/pub/libby_download"
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 LOCAL_SCRAPED="$REPO_ROOT/uk/data/scraped"
 LOCAL_SCRAPED_WARDS="$LOCAL_SCRAPED/wards"
-LOCAL_ABOUT="$REPO_ROOT/uk/data/scraped_about"
+LOCAL_ABOUT="$REPO_ROOT/uk/data/about_pages"
 LOCAL_ABOUT_WARDS="$LOCAL_ABOUT/wards"
 
 mkdir -p "$LOCAL_ABOUT_WARDS"
@@ -124,11 +124,14 @@ for NAME in "${NAMES[@]}"; do
         fi
     fi
 
+    # Local filename drops the "_search_targets" infix the remote scraper
+    # uses (<slug>_about.csv, not <slug>_search_targets_about.csv) — the
+    # remote path/filename itself is untouched, this is local-only tidying.
     if [[ "$RESOLVED" == "wards" ]]; then
-        LOCAL_DEST="$LOCAL_ABOUT_WARDS/${SLUG}_search_targets_about.csv"
+        LOCAL_DEST="$LOCAL_ABOUT_WARDS/${SLUG}_about.csv"
         REMOTE_FILE="$REMOTE_BASE/about_pages/wards/$SLUG/${SLUG}_search_targets_about.csv"
     else
-        LOCAL_DEST="$LOCAL_ABOUT/${SLUG}_search_targets_about.csv"
+        LOCAL_DEST="$LOCAL_ABOUT/${SLUG}_about.csv"
         REMOTE_FILE="$REMOTE_BASE/about_pages/constituencies/$SLUG/${SLUG}_search_targets_about.csv"
     fi
 

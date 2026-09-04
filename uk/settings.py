@@ -19,10 +19,14 @@ SCRAPED_DIR: Path = DATA_DIR / "scraped"
 WARD_SCRAPED_DIR: Path = SCRAPED_DIR / "wards"
 OUTPUT_DIR: Path = _THIS_DIR / "output"
 INTERMEDIATE_DIR: Path = OUTPUT_DIR / "intermediate"
+DISCARDED_DIR: Path = OUTPUT_DIR / "discarded"
 WARD_OUTPUT_DIR: Path = OUTPUT_DIR / "wards"
+ABOUT_PAGES_DIR: Path = DATA_DIR / "about_pages"
+WARD_ABOUT_PAGES_DIR: Path = ABOUT_PAGES_DIR / "wards"
 
 OUTPUT_DIR.mkdir(exist_ok=True)
 INTERMEDIATE_DIR.mkdir(exist_ok=True)
+DISCARDED_DIR.mkdir(exist_ok=True)
 SEARCH_TARGETS_DIR.mkdir(exist_ok=True)
 WARD_SEARCH_TARGETS_DIR.mkdir(exist_ok=True)
 SCRAPED_DIR.mkdir(exist_ok=True)
@@ -30,6 +34,8 @@ WARD_SCRAPED_DIR.mkdir(exist_ok=True)
 OVERTURE_DIR.mkdir(exist_ok=True)
 WARD_REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
 WARD_OUTPUT_DIR.mkdir(exist_ok=True)
+ABOUT_PAGES_DIR.mkdir(exist_ok=True)
+WARD_ABOUT_PAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 # Reference files — place these in uk/data/reference/ and do not modify them.
 CONSTITUENCIES_PATH = REFERENCE_DIR / "constituencies_2024.csv"
@@ -49,3 +55,9 @@ REDO_GROUPS_PATH = SCRAPED_DIR / "redo_groups.csv"
 NEW_SCRAPE_PATH = SCRAPED_DIR / "master_constituency_place_data_file.csv"
 DESCRIPTIONS_PATH = DATA_DIR / "descriptions.csv"
 WARD_DESCRIPTIONS_PATH = DATA_DIR / "ward_descriptions.csv"
+
+# uk.pipeline_ward has no per-ward resumability cache (every run reprocesses
+# everything fresh), so — unlike the constituency side's discarded/<code>.csv
+# per area — its discard log is written once, combined across every ward
+# processed in a run.
+WARD_DISCARDED_PATH = WARD_OUTPUT_DIR / "discarded.csv"

@@ -53,11 +53,28 @@ from pathlib import Path
 import pandas as pd
 
 from libby_core import assessment, descriptions
-from uk import data_loading, parsing, ward_geodata
+from uk import about_context, data_loading, parsing, ward_geodata
 from uk.generate_search import slugify
-from uk.settings import WARD_DESCRIPTIONS_PATH, WARD_OUTPUT_DIR, WARD_SCRAPED_DIR
+from uk.pipeline import _record_discards
+from uk.settings import (
+    WARD_ABOUT_PAGES_DIR,
+    WARD_DESCRIPTIONS_PATH,
+    WARD_DISCARDED_PATH,
+    WARD_OUTPUT_DIR,
+    WARD_SCRAPED_DIR,
+)
 
 AREA_KIND = "UK electoral ward"
+
+# Columns for WARD_DISCARDED_PATH — mirrors uk.pipeline's DISCARD_COLUMNS
+# but keyed on ward_name/local_authority (the area actually being processed
+# here) rather than PCON24CD/PCON24NM (the constituency a ward happens to
+# sit in — not unique per ward). _record_discards itself is area-agnostic,
+# just splatting whatever **area_cols it's given into each record.
+WARD_DISCARD_COLUMNS = [
+    "ward_name", "local_authority", "url", "name", "members", "posts_a_month",
+    "locality", "first_assessment", "stage", "reason",
+]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -232,7 +249,12 @@ def _update_targeting_master(ward_name: str, local_authority: str, breakdown: pd
     })
 
     if master_path.exists():
-        master = pd.read_csv(master_path, dtype=str).fillna("")
+        # latin-1, not utf-8: master_path is written with errors="surrogatepass"
+        # (group names can carry unpaired surrogates from mangled scraped
+        # emoji), which produces byte sequences strict utf-8 decoding
+        # rejects — same reasoning as uk.pipeline's output.csv/groups_*.csv
+        # reads.
+        master = pd.read_csv(master_path, dtype=str, encoding="latin-1").fillna("")
         master = master[
             ~((master["ward"] == ward_name) & (master["local_authority"] == local_authority))
         ]
@@ -265,9 +287,13 @@ def _process_file(
     min_members: int,
     min_posts_a_month: float,
     force_descriptions: bool,
+    use_context: bool,
+    discards: list[dict],
 ) -> list[pd.DataFrame]:
     """Process one scraped ward file. Returns the final per-ward DataFrames
-    it wrote (empty list if stop_before_ai_assessment, or nothing survived)."""
+    it wrote (empty list if stop_before_ai_assessment, or nothing survived).
+    Discard records for every ward processed are appended to `discards`
+    (shared across every file in one run() call — see WARD_DISCARDED_PATH)."""
     logger.info("Loading: %s", input_path)
     df_exploded = data_loading.load_new_scrape(input_path)
     if df_exploded.empty:
@@ -286,6 +312,15 @@ def _process_file(
     ward_list = df_exploded[["ward_id", "ward_name", "local_authority"]].drop_duplicates()
     logger.info("Found %d ward(s) in input", len(ward_list))
 
+    # Same-named wards in different local authorities share one bare
+    # slugify(ward_name) — the slug pull_about.sh's about-pages file is keyed
+    # on (see WARD_ABOUT_PAGES_DIR note in uk/settings.py). Detected here
+    # (across this run's own ward_list) so --context can refuse to guess
+    # which one an about_pages file actually belongs to, rather than
+    # silently feeding one ward's About text into another's assessment.
+    _slug_to_las = ward_list.assign(_slug=ward_list["ward_name"].apply(slugify)).groupby("_slug")["local_authority"].nunique()
+    ambiguous_ward_slugs = set(_slug_to_las[_slug_to_las > 1].index)
+
     all_final = []
     for _, w in ward_list.iterrows():
         ward_id, ward_name, local_authority = w["ward_id"], w["ward_name"], w["local_authority"]
@@ -294,11 +329,37 @@ def _process_file(
         agg = _aggregate_ward_groups(df_exploded, ward_id)
         logger.info("  %d aggregated groups", len(agg))
 
+        # _row_id identifies each physical row through every filter below —
+        # see uk.pipeline._record_discards for why this (not url) is diffed.
+        agg = agg.reset_index(drop=True)
+        agg["_row_id"] = agg.index
+        area_cols = {"ward_name": ward_name, "local_authority": local_authority}
+
+        before = agg
         combined = agg[agg.public_y_n == True].copy()  # noqa: E712
+        discards.extend(_record_discards(
+            before, combined, "public_filter",
+            "Not marked public (private, or public/private unknown)",
+            **area_cols,
+        ))
+
+        before = combined
         combined = _drop_buy_sell(combined)
+        discards.extend(_record_discards(
+            before, combined, "buy_sell",
+            "Group name matched buy/sell/marketplace pattern",
+            **area_cols,
+        ))
+
+        before = combined
         combined = combined[
             combined["posts_a_month"].isna() | (combined["posts_a_month"] >= min_posts_a_month)
         ].copy()
+        discards.extend(_record_discards(
+            before, combined, "activity_filter",
+            f"Posts per month below threshold (< {min_posts_a_month})",
+            **area_cols,
+        ))
 
         # Same filename convention as uk/pipeline.py's constituency output
         # (groups_{Name}.csv, raw name — not slugified) and same "found
@@ -306,7 +367,7 @@ def _process_file(
         # docstring for why wards skip the add-on that "A"/"L"/"R" mean.
         if stop_before_ai_assessment:
             out_path = WARD_OUTPUT_DIR / f"{ward_name}-intermediate.csv"
-            combined.to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
+            combined.drop(columns=["_row_id"]).to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
             logger.info("  Saved %d rows (pre-assessment) → %s", len(combined), out_path)
             continue
 
@@ -326,13 +387,59 @@ def _process_file(
         if not desc:
             logger.warning("No description for %s — using empty string for assessment", ward_name)
 
-        assessed = assessment.assess_groups(df=combined, area_description=desc, area_kind=AREA_KIND)
+        context_column = None
+        if use_context and slugify(ward_name) in ambiguous_ward_slugs:
+            logger.warning(
+                "  Skipping --context for %s (%s): its slug is shared with "
+                "another ward in a different local authority in this run — "
+                "can't tell which one an about_pages file would belong to",
+                ward_name, local_authority or "no local authority given",
+            )
+        elif use_context:
+            # Bare slug (matches pull_about.sh's ward naming — the main
+            # scrape's own slug), deliberately NOT ward_id (which also folds
+            # in local_authority to disambiguate same-named wards) — see the
+            # WARD_ABOUT_PAGES_DIR note in uk/settings.py.
+            about_path = WARD_ABOUT_PAGES_DIR / f"{slugify(ward_name)}_about.csv"
+            about_lookup = about_context.load_about_context(about_path)
+            if about_lookup:
+                combined["about_context"] = combined["url"].map(about_lookup)
+                n_matched = combined["about_context"].notna().sum()
+                logger.info(
+                    "  %d/%d groups matched About context for %s",
+                    n_matched, len(combined), ward_name,
+                )
+                context_column = "about_context"
+
+        assessed = assessment.assess_groups(
+            df=combined, area_description=desc, area_kind=AREA_KIND, context_column=context_column,
+        )
         combined["first_assessment"] = assessed.get("first_assessment")
 
-        final = combined[
-            (combined["first_assessment"] != "No") & (combined["members"].fillna(0) >= min_members)
-        ].copy()
+        before = combined
+        final = combined[combined["first_assessment"] != "No"].copy()
+        discards.extend(_record_discards(
+            before, final, "ai_assessment",
+            'AI assessed group as not local to the area ("No")',
+            **area_cols,
+        ))
+
+        before = final
+        final = final[final["members"].fillna(0) >= min_members].copy()
+        discards.extend(_record_discards(
+            before, final, "members_filter",
+            f"Member count below threshold (< {min_members})",
+            **area_cols,
+        ))
+
+        before = final
         final = _drop_unsure_churches(final, ward_name)
+        discards.extend(_record_discards(
+            before, final, "church_heuristic",
+            'Assessed "Unsure" + church-pattern name, no area-name match',
+            **area_cols,
+        ))
+
         final = final.sort_values(by=["members", "posts_a_month"], ascending=False, na_position="last")
 
         breakdown = _log_targeting_breakdown(ward_name, final)
@@ -343,6 +450,9 @@ def _process_file(
 
         final["locality"] = "C"
         final["locality_name"] = ""
+        # Whitelist selection — also drops _row_id/about_context, neither of
+        # which belongs in the shipped output (about_context is prompt input
+        # only, same as uk.pipeline.run()'s equivalent drop).
         final = final[FINAL_COLUMNS]
 
         out_path = WARD_OUTPUT_DIR / f"groups_{ward_name}.csv"
@@ -359,6 +469,7 @@ def run(
     min_members: int = DEFAULT_MIN_MEMBERS,
     min_posts_a_month: float = DEFAULT_MIN_POSTS_A_MONTH,
     force_descriptions: bool = False,
+    use_context: bool = False,
 ) -> pd.DataFrame:
     """Process one or more scraped ward files (default: every file in
     WARD_SCRAPED_DIR — generate_search_ward.py writes one per ward) and
@@ -372,11 +483,22 @@ def run(
     elif isinstance(input_paths, (str, Path)):
         input_paths = [Path(input_paths)]
 
+    # Unlike uk.pipeline's per-constituency discarded/<code>.csv, there's no
+    # per-ward resumability cache here (every run reprocesses everything
+    # fresh — see module docstring), so discards accumulate across every
+    # ward in every file and are written once, alongside ward_output.csv.
+    discards: list[dict] = []
     all_final = []
     for path in input_paths:
         all_final.extend(_process_file(
-            Path(path), stop_before_ai_assessment, min_members, min_posts_a_month, force_descriptions,
+            Path(path), stop_before_ai_assessment, min_members, min_posts_a_month,
+            force_descriptions, use_context, discards,
         ))
+
+    pd.DataFrame(discards, columns=WARD_DISCARD_COLUMNS).to_csv(
+        WARD_DISCARDED_PATH, index=False, encoding="utf-8", errors="surrogatepass"
+    )
+    logger.info("Saved %d discarded rows → %s", len(discards), WARD_DISCARDED_PATH)
 
     if stop_before_ai_assessment or not all_final:
         return pd.DataFrame()
@@ -395,6 +517,15 @@ def main():
     parser.add_argument("--min-members", type=int, default=DEFAULT_MIN_MEMBERS, help=f"Minimum member count to keep a group (default: {DEFAULT_MIN_MEMBERS})")
     parser.add_argument("--min-posts-a-month", type=float, default=DEFAULT_MIN_POSTS_A_MONTH, help=f"Minimum posts/month to keep a group (default: {DEFAULT_MIN_POSTS_A_MONTH})")
     parser.add_argument("--force", action="store_true", help="Regenerate each ward's cached AI description instead of reusing what's in ward_descriptions.csv")
+    parser.add_argument(
+        "--context",
+        action="store_true",
+        help=(
+            "For each ward, look up uk/data/about_pages/wards/<ward-slug>_about.csv "
+            "and — if it exists — pass each group's own About-page text to the "
+            "LLM as extra context for the relevance assessment."
+        ),
+    )
     args = parser.parse_args()
 
     run(
@@ -403,6 +534,7 @@ def main():
         min_members=args.min_members,
         min_posts_a_month=args.min_posts_a_month,
         force_descriptions=args.force,
+        use_context=args.context,
     )
 
 
