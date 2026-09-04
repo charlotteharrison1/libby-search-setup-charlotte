@@ -61,3 +61,9 @@ WARD_DESCRIPTIONS_PATH = DATA_DIR / "ward_descriptions.csv"
 # per area — its discard log is written once, combined across every ward
 # processed in a run.
 WARD_DISCARDED_PATH = WARD_OUTPUT_DIR / "discarded.csv"
+
+# uk.queue_unsure_for_about's output: a groups_file-shaped CSV of every
+# still-Unsure, not-yet-About-scraped group across every groups_*.csv found,
+# ready to hand to libby_download's scrape_group_about.py. Regenerated fresh
+# each run, not accumulated — see uk/queue_unsure_for_about.py.
+UNSURE_QUEUE_PATH = OUTPUT_DIR / "unsure_queue.csv"

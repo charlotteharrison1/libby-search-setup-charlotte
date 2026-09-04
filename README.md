@@ -64,6 +64,67 @@ See [step 2 of the quick start](#2-upload-to-scraper-device) for these in contex
 
 ---
 
+## Index — About-context escalation (`--context`)
+
+Feeds each candidate group's own Facebook About-page text to the LLM as
+extra grounding for the relevance assessment — catches both generic
+national groups (a 17K-member gardening group matching only on the word
+"Garden") and same-name-different-place mixups (a "Church End" group
+that's really Wales's, wrongly swept into Barnet's own search results).
+`--context` draws on a single **global**, URL-keyed cache built from every
+About-scrape ever pulled, anywhere (`uk/about_context.py`) — so any area's
+About-scrape helps every other area that shares a candidate group, not just
+its own, and a group only ever needs to be About-scraped once, by anyone.
+
+Since About-scraping every group in every area isn't realistic (it's slow,
+one Selenium page-load per group), the other half of this is escalating on
+uncertainty: run cheaply without `--context` first, then only About-scrape
+the specific groups that came back `"Unsure"`.
+
+| Script | Command | What it does |
+|---|---|---|
+| **Run with context** | `python -m uk.pipeline --constituency "Name" --context` or `python -m uk.pipeline_ward --context` | Loads the global cache once per run, matches each candidate group by URL, and adds any matched About text to its assessment prompt. Identical to a normal run for any group with no cached text, or whenever `--context` is omitted — never a behaviour change by accident. |
+| **Queue what's still ambiguous** | `python -m uk.queue_unsure_for_about` | Scans every `groups_*.csv` already produced (constituency and ward alike), collects groups still assessed `"Unsure"`, drops any that already have About-context (re-scraping one wouldn't change an already-informed "Unsure"), dedupes by URL, and writes `uk/output/unsure_queue.csv` — a `groups_file` in exactly the shape `scrape_group_about.py` already expects, ready to point it at with no changes to that script. |
+
+**Cheat sheet — the full loop, start to finish:**
+```bash
+# 1. Run (or re-run) some areas with --context, using whatever's cached so far
+python -m uk.pipeline --constituency "Aldershot" --context
+python -m uk.pipeline_ward --context
+
+# 2. Build the queue of groups still worth reviewing
+python -m uk.queue_unsure_for_about
+#    -> uk/output/unsure_queue.csv (open it, review before pushing)
+
+# 3. Push it and point scrape_group_about.py at it — same manual
+#    login/review gate as any About-scrape, just a much smaller, targeted
+#    input this time (edit aboud_params.json's groups_file/output_directory
+#    by hand; set_about_target.sh is built for the constituencies/<slug>/
+#    or wards/<slug>/ layout, not a one-off ad hoc file like this one):
+scp uk/output/unsure_queue.csv libby:/home/pub/libby_download/unsure_queue.csv
+ssh libby
+cd /home/pub/libby_download
+#   edit aboud_params.json:
+#     "groups_file": "unsure_queue.csv"
+#     "output_directory": "about_pages/unsure_queue"
+python3 scrape_group_about.py --params aboud_params.json --nofilter
+#   (--nofilter: these groups already passed our own filters upstream)
+
+# 4. Pull the result straight into the global cache — any filename ending
+#    _about.csv works, anywhere under uk/data/about_pages/
+scp libby:/home/pub/libby_download/about_pages/unsure_queue/unsure_queue_about.csv \
+    uk/data/about_pages/unsure_queue_about.csv
+
+# 5. Re-run the areas that had Unsure groups — they pick up the new context
+#    automatically, no manual routing back to "which area was this for"
+python -m uk.pipeline --constituency "Aldershot" --context
+```
+
+See `uk/about_context.py` and `uk/queue_unsure_for_about.py` for the full
+design rationale.
+
+---
+
 ## Where files live (UK)
 
 Constituency and ward files are kept in separate, parallel locations at every
