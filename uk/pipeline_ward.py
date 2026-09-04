@@ -57,7 +57,7 @@ from uk import about_context, data_loading, parsing, ward_geodata
 from uk.generate_search import slugify
 from uk.pipeline import _record_discards
 from uk.settings import (
-    WARD_ABOUT_PAGES_DIR,
+    ABOUT_PAGES_DIR,
     WARD_DESCRIPTIONS_PATH,
     WARD_DISCARDED_PATH,
     WARD_OUTPUT_DIR,
@@ -287,7 +287,7 @@ def _process_file(
     min_members: int,
     min_posts_a_month: float,
     force_descriptions: bool,
-    use_context: bool,
+    about_lookup: dict[str, str],
     discards: list[dict],
 ) -> list[pd.DataFrame]:
     """Process one scraped ward file. Returns the final per-ward DataFrames
@@ -311,15 +311,6 @@ def _process_file(
 
     ward_list = df_exploded[["ward_id", "ward_name", "local_authority"]].drop_duplicates()
     logger.info("Found %d ward(s) in input", len(ward_list))
-
-    # Same-named wards in different local authorities share one bare
-    # slugify(ward_name) — the slug pull_about.sh's about-pages file is keyed
-    # on (see WARD_ABOUT_PAGES_DIR note in uk/settings.py). Detected here
-    # (across this run's own ward_list) so --context can refuse to guess
-    # which one an about_pages file actually belongs to, rather than
-    # silently feeding one ward's About text into another's assessment.
-    _slug_to_las = ward_list.assign(_slug=ward_list["ward_name"].apply(slugify)).groupby("_slug")["local_authority"].nunique()
-    ambiguous_ward_slugs = set(_slug_to_las[_slug_to_las > 1].index)
 
     all_final = []
     for _, w in ward_list.iterrows():
@@ -388,28 +379,14 @@ def _process_file(
             logger.warning("No description for %s — using empty string for assessment", ward_name)
 
         context_column = None
-        if use_context and slugify(ward_name) in ambiguous_ward_slugs:
-            logger.warning(
-                "  Skipping --context for %s (%s): its slug is shared with "
-                "another ward in a different local authority in this run — "
-                "can't tell which one an about_pages file would belong to",
-                ward_name, local_authority or "no local authority given",
+        if about_lookup:
+            combined["about_context"] = combined["url"].map(about_lookup)
+            n_matched = combined["about_context"].notna().sum()
+            logger.info(
+                "  %d/%d groups matched About context for %s",
+                n_matched, len(combined), ward_name,
             )
-        elif use_context:
-            # Bare slug (matches pull_about.sh's ward naming — the main
-            # scrape's own slug), deliberately NOT ward_id (which also folds
-            # in local_authority to disambiguate same-named wards) — see the
-            # WARD_ABOUT_PAGES_DIR note in uk/settings.py.
-            about_path = WARD_ABOUT_PAGES_DIR / f"{slugify(ward_name)}_about.csv"
-            about_lookup = about_context.load_about_context(about_path)
-            if about_lookup:
-                combined["about_context"] = combined["url"].map(about_lookup)
-                n_matched = combined["about_context"].notna().sum()
-                logger.info(
-                    "  %d/%d groups matched About context for %s",
-                    n_matched, len(combined), ward_name,
-                )
-                context_column = "about_context"
+            context_column = "about_context"
 
         assessed = assessment.assess_groups(
             df=combined, area_description=desc, area_kind=AREA_KIND, context_column=context_column,
@@ -483,6 +460,12 @@ def run(
     elif isinstance(input_paths, (str, Path)):
         input_paths = [Path(input_paths)]
 
+    # Loaded once for the whole run, not per ward/file — see
+    # uk.about_context.load_global_about_context for why a single global,
+    # URL-keyed cache (unioning every about_pages CSV ever pulled, for any
+    # constituency or ward) is preferred over one file per ward.
+    about_lookup = about_context.load_global_about_context(ABOUT_PAGES_DIR) if use_context else {}
+
     # Unlike uk.pipeline's per-constituency discarded/<code>.csv, there's no
     # per-ward resumability cache here (every run reprocesses everything
     # fresh — see module docstring), so discards accumulate across every
@@ -492,7 +475,7 @@ def run(
     for path in input_paths:
         all_final.extend(_process_file(
             Path(path), stop_before_ai_assessment, min_members, min_posts_a_month,
-            force_descriptions, use_context, discards,
+            force_descriptions, about_lookup, discards,
         ))
 
     pd.DataFrame(discards, columns=WARD_DISCARD_COLUMNS).to_csv(
@@ -521,9 +504,11 @@ def main():
         "--context",
         action="store_true",
         help=(
-            "For each ward, look up uk/data/about_pages/wards/<ward-slug>_about.csv "
-            "and — if it exists — pass each group's own About-page text to the "
-            "LLM as extra context for the relevance assessment."
+            "Load a global, URL-keyed cache of every group's About-page text "
+            "from every *_about.csv found anywhere under uk/data/about_pages/ "
+            "(any constituency or ward's about-scrape helps every other area, "
+            "not just its own) and pass a matched group's text to the LLM as "
+            "extra context for the relevance assessment."
         ),
     )
     args = parser.parse_args()

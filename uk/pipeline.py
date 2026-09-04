@@ -22,7 +22,6 @@ import pandas as pd
 
 from libby_core import assessment, descriptions
 from uk import about_context, data_loading, geo, parsing
-from uk.generate_search import slugify
 from uk.settings import (
     ABOUT_PAGES_DIR,
     DESCRIPTIONS_PATH,
@@ -376,6 +375,12 @@ def run(
     logger.info("Loading data …")
     df_new_exploded = data_loading.load_new_scrape(input_path or NEW_SCRAPE_PATH)
 
+    # Loaded once for the whole run, not per constituency — see
+    # uk.about_context.load_global_about_context for why a single global,
+    # URL-keyed cache (unioning every about_pages CSV ever pulled, for any
+    # constituency or ward) is preferred over one file per area.
+    about_lookup = about_context.load_global_about_context(ABOUT_PAGES_DIR) if use_context else {}
+
     # PCON mapping — fall back to scrape data if file is missing
     if PCON_MAPPING_PATH.exists():
         pcon_map_df = data_loading.load_pcon_mapping()
@@ -542,17 +547,14 @@ def run(
             combined["first_assessment"] = None
 
         context_column = None
-        if use_context:
-            about_path = ABOUT_PAGES_DIR / f"{slugify(pcon24nm)}_about.csv"
-            about_lookup = about_context.load_about_context(about_path)
-            if about_lookup:
-                combined["about_context"] = combined["url"].map(about_lookup)
-                n_matched = combined["about_context"].notna().sum()
-                logger.info(
-                    "  %d/%d groups matched About context for %s",
-                    n_matched, len(combined), pcon24nm,
-                )
-                context_column = "about_context"
+        if about_lookup:
+            combined["about_context"] = combined["url"].map(about_lookup)
+            n_matched = combined["about_context"].notna().sum()
+            logger.info(
+                "  %d/%d groups matched About context for %s",
+                n_matched, len(combined), pcon24nm,
+            )
+            context_column = "about_context"
 
         if not combined.empty:
             assessed = assessment.assess_groups(
@@ -718,9 +720,11 @@ def main():
         "--context",
         action="store_true",
         help=(
-            "For each constituency, look up uk/data/about_pages/<slug>_about.csv "
-            "and — if it exists — pass each group's own About-page text to the "
-            "LLM as extra context for the relevance assessment."
+            "Load a global, URL-keyed cache of every group's About-page text "
+            "from every *_about.csv found anywhere under uk/data/about_pages/ "
+            "(any constituency or ward's about-scrape helps every other area, "
+            "not just its own) and pass a matched group's text to the LLM as "
+            "extra context for the relevance assessment."
         ),
     )
     args = parser.parse_args()
