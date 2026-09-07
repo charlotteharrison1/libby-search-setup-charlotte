@@ -121,6 +121,15 @@
   }
   .btn-danger:hover:not(:disabled) { background: rgba(255,122,134,.1); border-color: var(--red); }
   .btn-danger:disabled { color: #4a3a3d; border-color: var(--border); cursor: not-allowed; }
+  .stdin-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .stdin-prompt { color: var(--neon-dim); font-family: var(--font-mono); font-weight: 700; }
+  .stdin-row input {
+    flex: 1; padding: 8px 12px; font-size: 13px; border: 1px solid var(--border);
+    border-radius: 5px; background: var(--bg2); color: var(--ink); font-family: var(--font-mono);
+  }
+  .stdin-row input:focus { outline: none; border-color: var(--neon-dim); box-shadow: 0 0 0 3px var(--neon-glow); }
+  .stdin-row input:disabled { color: var(--muted); cursor: not-allowed; }
+  .stdin-row .btn-secondary:disabled { color: #4a5a52; border-color: var(--border); cursor: not-allowed; }
   label.chk { font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
   label.chk input { accent-color: var(--neon); width: 14px; height: 14px; }
   #log {
@@ -178,6 +187,11 @@
     <button class="btn-danger" id="killBtn" type="button" disabled>■ Stop</button>
   </div>
   <div id="log">(nothing run yet)</div>
+  <div class="stdin-row">
+    <span class="stdin-prompt">&gt;</span>
+    <input id="stdinInput" placeholder="Send input to the running command (e.g. press Enter for a login prompt)..." disabled autocomplete="off">
+    <button class="btn-secondary" id="stdinSendBtn" type="button" disabled>Send</button>
+  </div>
 </section>
 
 <section>
@@ -527,6 +541,8 @@ async function runAction() {
   const btn = document.getElementById("runBtn");
   btn.disabled = true;
   document.getElementById("killBtn").disabled = false;
+  document.getElementById("stdinInput").disabled = false;
+  document.getElementById("stdinSendBtn").disabled = false;
   document.getElementById("log").textContent = "";
   appendLog("Starting...\n");
 
@@ -560,7 +576,27 @@ async function runAction() {
   } finally {
     btn.disabled = false;
     document.getElementById("killBtn").disabled = true;
+    document.getElementById("stdinInput").disabled = true;
+    document.getElementById("stdinSendBtn").disabled = true;
     loadStatus();
+  }
+}
+
+async function sendStdin() {
+  const input = document.getElementById("stdinInput");
+  const text = input.value;
+  input.value = "";
+  appendLog(`\n> ${text}\n`, "cmd");
+  try {
+    const res = await fetch("/api/stdin", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text}),
+    });
+    const data = await res.json();
+    if (!data.ok) appendLog(`[${data.message}]\n`, "exit-bad");
+  } catch (e) {
+    appendLog(`Send failed: ${e}\n`, "exit-bad");
   }
 }
 
@@ -587,6 +623,10 @@ document.getElementById("actionSelect").addEventListener("change", () => {
 });
 document.getElementById("runBtn").addEventListener("click", runAction);
 document.getElementById("killBtn").addEventListener("click", killCurrent);
+document.getElementById("stdinSendBtn").addEventListener("click", sendStdin);
+document.getElementById("stdinInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendStdin();
+});
 document.getElementById("pickNextBtn").addEventListener("click", pickNext);
 document.getElementById("pick5Btn").addEventListener("click", pick5);
 document.getElementById("filterBox").addEventListener("input", e => renderStatus(e.target.value));

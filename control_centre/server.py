@@ -52,7 +52,7 @@ def api_status():
     rows = status.build_status_table()
     action_list = [
         {"id": aid, "label": label, "category": category, "needs_area": needs_area}
-        for aid, (label, category, needs_area, _builder, _send_enter) in actions.ACTIONS.items()
+        for aid, (label, category, needs_area, _builder) in actions.ACTIONS.items()
     ]
     return jsonify({"areas": rows, "actions": action_list})
 
@@ -96,37 +96,29 @@ def api_preview():
     return jsonify({"command": shlex.join(cmd)})
 
 
-def _stream_command(cmd: list[str], cwd: Path | None = None, send_enter: bool = False):
+def _stream_command(cmd: list[str], cwd: Path | None = None):
     """Generator: first line is the literal command (so the UI can show
     exactly what's running before any output arrives), then each
     stdout/stderr line as it's produced, then a final exit-code line.
 
-    send_enter=True pipes a newline into the process's stdin right after it
-    starts — for run_remote_scrape, whose remote script.py blocks on a
-    login-confirmation keypress that a real interactive SSH session would
-    supply by hand (see actions.needs_login_confirm). The byte just waits
-    in the pipe until the remote input() call actually reads it, so there's
-    no race with how long the browser takes to open first."""
+    stdin is always left open (not closed, nothing auto-written) so
+    /api/stdin can send it real input for the life of the run — e.g.
+    run_remote_scrape's script.py, which blocks on a login-confirmation
+    keypress. Every other action just never gets anything written to it,
+    which is harmless — none of them read stdin at all."""
     global _current_proc
 
     yield f"$ {shlex.join(cmd)}\n\n"
     try:
         proc = subprocess.Popen(
             cmd, cwd=cwd or REPO_ROOT,
-            stdin=subprocess.PIPE if send_enter else None,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1,
         )
     except FileNotFoundError as e:
         yield f"!! Could not start command: {e}\n"
         return
-
-    if send_enter:
-        try:
-            proc.stdin.write("\n")
-            proc.stdin.close()
-        except OSError:
-            pass  # process may have already exited; nothing to send to
 
     with _current_proc_lock:
         _current_proc = proc
@@ -142,17 +134,39 @@ def _stream_command(cmd: list[str], cwd: Path | None = None, send_enter: bool = 
         with _current_proc_lock:
             if _current_proc is proc:
                 _current_proc = None
+        try:
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
 
 
 @app.route("/api/run", methods=["POST"])
 def api_run():
-    body = request.get_json(force=True)
-    cmd, error = _resolve_command(body)
+    cmd, error = _resolve_command(request.get_json(force=True))
     if error:
-        error_body, code = error
-        return jsonify(error_body), code
-    send_enter = actions.needs_login_confirm(body.get("action_id"))
-    return Response(_stream_command(cmd, send_enter=send_enter), mimetype="text/plain")
+        body, code = error
+        return jsonify(body), code
+    return Response(_stream_command(cmd), mimetype="text/plain")
+
+
+@app.route("/api/stdin", methods=["POST"])
+def api_stdin():
+    """Sends a line of text to the currently-running command's stdin — a
+    real interactive terminal for the one process /api/kill also tracks,
+    not a timed guess at what it needs. Used for e.g. run_remote_scrape's
+    script.py, which waits for a keypress once you can see in the log that
+    the browser's actually come up."""
+    text = (request.get_json(force=True) or {}).get("text", "")
+    with _current_proc_lock:
+        proc = _current_proc
+    if proc is None or proc.poll() is not None:
+        return jsonify({"ok": False, "message": "No command is currently running"}), 400
+    try:
+        proc.stdin.write(text + "\n")
+        proc.stdin.flush()
+    except (OSError, ValueError) as e:
+        return jsonify({"ok": False, "message": f"Could not send input: {e}"}), 400
+    return jsonify({"ok": True, "message": "Sent"})
 
 
 @app.route("/api/kill", methods=["POST"])

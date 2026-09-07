@@ -132,48 +132,45 @@ def _build_run_remote_scrape(row, params):
     # already their own actions) from "run whatever's currently
     # configured", which is what you actually do most of the time (e.g.
     # resuming after script.py's own overnight pause, with the target
-    # unchanged from before). script.py's login prompt only needs a
-    # keypress (the profile on libby is already authenticated — no real
-    # credentials involved), which server.py supplies by piping a newline
-    # into this command's stdin (see ACTIONS' send_enter flag) — `ssh host
-    # "cmd"` forwards local stdin to the remote command by default, so this
-    # reaches script.py's input() same as a real keypress would.
+    # unchanged from before).
+    #
+    # script.py's login prompt needs a keypress before it proceeds (the
+    # profile on libby is already authenticated — no real credentials
+    # involved) — but auto-supplying it immediately on process start turned
+    # out to be unreliable in practice (a "user data directory already in
+    # use" SessionNotCreatedException — plausibly a race with Chrome still
+    # finishing its own startup, or a stale profile lock from an earlier
+    # interrupted run). Rather than guess at a delay, this stays fully
+    # interactive: the process's stdin is left open for the whole run (see
+    # server.py's /api/stdin) so you can type Enter yourself once you can
+    # actually see the browser's come up in the log — matching what a real
+    # SSH session gives you, just from this page instead.
     remote_cmd = f"cd {REMOTE_BASE} && python3 script.py --params clacton.json"
     return _ssh(remote_cmd)
 
 
-# id -> (label, category, needs_area, builder, send_enter)
+# id -> (label, category, needs_area, builder)
 # needs_area=False for actions that don't take a specific area (e.g. "pick
-# next" scans the device itself for what to do next). send_enter=True for
-# the one action whose remote command blocks on a login-confirmation
-# keypress (see _build_run_remote_scrape).
+# next" scans the device itself for what to do next).
 ACTIONS = {
-    "prep":                    ("Generate + push (prep)",        "Prep",    True,  _build_prep,                  False),
-    "prep_bulk":               ("Bulk prep (Pick 5)",            "Prep",    False, _build_prep_bulk,             False),
-    "push":                    ("Push",                          "Push",    True,  _build_push,                  False),
-    "pull":                    ("Pull scraped groups",           "Pull",    True,  _build_pull,                  False),
-    "pull_about":              ("Pull About-scrape",             "Pull",    True,  _build_pull_about,            False),
-    "run_pipeline":            ("Run pipeline",                  "Process", True,  _build_run_pipeline,          False),
-    "set_scrape_target":       ("Set scrape target",             "Remote",  True,  _build_set_scrape_target,     False),
-    "pick_next_scrape_target": ("Pick next scrape target",       "Remote",  False, _build_pick_next_scrape_target, False),
-    "set_about_target":        ("Set About-scrape target",       "Remote",  True,  _build_set_about_target,      False),
-    "pick_next_about_target":  ("Pick next About-scrape target", "Remote",  False, _build_pick_next_about_target,  False),
-    "run_remote_scrape":       ("Run remote scrape (script.py, current target)", "Remote", False, _build_run_remote_scrape, True),
+    "prep":                    ("Generate + push (prep)",        "Prep",    True,  _build_prep),
+    "prep_bulk":               ("Bulk prep (Pick 5)",            "Prep",    False, _build_prep_bulk),
+    "push":                    ("Push",                          "Push",    True,  _build_push),
+    "pull":                    ("Pull scraped groups",           "Pull",    True,  _build_pull),
+    "pull_about":              ("Pull About-scrape",             "Pull",    True,  _build_pull_about),
+    "run_pipeline":            ("Run pipeline",                  "Process", True,  _build_run_pipeline),
+    "set_scrape_target":       ("Set scrape target",             "Remote",  True,  _build_set_scrape_target),
+    "pick_next_scrape_target": ("Pick next scrape target",       "Remote",  False, _build_pick_next_scrape_target),
+    "set_about_target":        ("Set About-scrape target",       "Remote",  True,  _build_set_about_target),
+    "pick_next_about_target":  ("Pick next About-scrape target", "Remote",  False, _build_pick_next_about_target),
+    "run_remote_scrape":       ("Run remote scrape (script.py, current target)", "Remote", False, _build_run_remote_scrape),
 }
 
 
 def build_command(action_id: str, row: dict | None, params: dict) -> list[str]:
     if action_id not in ACTIONS:
         raise UnknownAction(f"Unknown action: {action_id}")
-    _, _, needs_area, builder, _send_enter = ACTIONS[action_id]
+    _, _, needs_area, builder = ACTIONS[action_id]
     if needs_area and row is None:
         raise UnknownAction(f"{action_id} requires an area")
     return builder(row, params)
-
-
-def needs_login_confirm(action_id: str) -> bool:
-    """True if this action's remote command blocks on a login-confirmation
-    keypress that server.py should auto-supply via stdin (see
-    _build_run_remote_scrape)."""
-    entry = ACTIONS.get(action_id)
-    return bool(entry and entry[4])
