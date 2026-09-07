@@ -14,3 +14,6 @@ pydantic-settings>=2.12.0
 # Optional: required for uk.pipeline/uk.pipeline_ward's --about flag
 # (uk/local_about_scraper.py — local, inline About-scraping)
 # selenium>=4.6
+
+# Optional: required for the control centre (control_centre/server.py)
+# flask>=3.0

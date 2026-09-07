@@ -58,6 +58,7 @@ from uk.generate_search import slugify
 from uk.pipeline import _record_discards
 from uk.settings import (
     ABOUT_PAGES_DIR,
+    WARD_ABOUT_PAGES_DIR,
     WARD_DESCRIPTIONS_PATH,
     WARD_DISCARDED_PATH,
     WARD_OUTPUT_DIR,
@@ -427,8 +428,14 @@ def _process_file(
                 if not scraped_df.empty:
                     # Bare slug (matches pull_about.sh's ward naming — the
                     # main scrape's own slug), deliberately NOT ward_id.
+                    # WARD_ABOUT_PAGES_DIR (not the flat ABOUT_PAGES_DIR) to
+                    # match pull_about.sh's own wards/ convention — doesn't
+                    # affect the global cache itself (load_global_about_context
+                    # rglobs everything regardless of subfolder), but keeps
+                    # the on-disk layout consistent for anything that reads
+                    # folder structure directly (e.g. control_centre/status.py).
                     scraped_path = local_about_scraper.write_local_about(
-                        scraped_df, slugify(ward_name), out_dir=ABOUT_PAGES_DIR,
+                        scraped_df, slugify(ward_name), out_dir=WARD_ABOUT_PAGES_DIR,
                     )
                     new_context = about_context.load_about_context(scraped_path)
                     about_lookup.update(new_context)

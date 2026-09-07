@@ -1,0 +1,213 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Libby Control Centre</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 20px; background: #f7f7f8; color: #1a1a1a; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 13px; margin-bottom: 18px; }
+  section { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #555; margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; white-space: nowrap; }
+  th { color: #666; font-weight: 600; }
+  td.mark-yes { color: #1a7a1a; font-weight: 600; }
+  td.mark-no { color: #ccc; }
+  .filter-row { margin-bottom: 8px; }
+  .filter-row input { padding: 4px 8px; font-size: 13px; width: 220px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .controls > * { margin: 0; }
+  select, button { font-size: 13px; padding: 5px 8px; }
+  button.run { background: #1a1a1a; color: #fff; border: none; border-radius: 5px; padding: 6px 16px; cursor: pointer; }
+  button.run:hover { background: #333; }
+  button.run:disabled { background: #999; cursor: not-allowed; }
+  label.chk { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+  #log { background: #111; color: #d6d6d6; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; padding: 12px; border-radius: 6px; height: 340px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+  #log .cmd { color: #7ce07c; }
+  #log .exit-ok { color: #7ce07c; }
+  #log .exit-bad { color: #ff8080; }
+  .hint { color: #888; font-size: 12px; margin-top: 6px; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: #eee; color: #555; margin-left: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Libby Control Centre</h1>
+<div class="sub">Every action below runs a real local command — the exact command is always shown in the log before it executes.</div>
+
+<section>
+  <h2>Run an action</h2>
+  <div class="controls">
+    <select id="actionSelect"></select>
+    <select id="areaSelect"></select>
+    <span id="paramBox"></span>
+    <button class="run" id="runBtn">Run</button>
+  </div>
+  <div class="hint" id="actionHint"></div>
+</section>
+
+<section>
+  <h2>Command log</h2>
+  <div id="log">(nothing run yet)</div>
+</section>
+
+<section>
+  <h2>Status <span class="badge" id="areaCount"></span></h2>
+  <div class="filter-row"><input id="filterBox" placeholder="filter areas..."></div>
+  <table id="statusTable">
+    <thead>
+      <tr>
+        <th>Area</th><th>Type</th><th>Generated</th><th>Pushed</th>
+        <th>Scraped</th><th>About</th><th>Processed</th><th>Staged</th><th>Promoted</th>
+      </tr>
+    </thead>
+    <tbody id="statusBody"></tbody>
+  </table>
+</section>
+
+<script>
+let AREAS = [];
+let ACTIONS = [];
+
+const PARAM_DEFS = {
+  prep: [{key: "force", label: "--force"}],
+  push: [],
+  pull: [],
+  pull_about: [],
+  run_pipeline: [
+    {key: "context", label: "--context"},
+    {key: "about", label: "--about"},
+    {key: "stop_before_ai_assessment", label: "--stop-before-ai-assessment"},
+  ],
+  set_scrape_target: [{key: "force", label: "--force"}],
+  pick_next_scrape_target: [{key: "dry_run", label: "--dry-run"}],
+  set_about_target: [{key: "force", label: "--force"}],
+  pick_next_about_target: [{key: "dry_run", label: "--dry-run"}],
+};
+
+function mark(v) { return `<td class="${v ? 'mark-yes' : 'mark-no'}">${v ? '✓' : '–'}</td>`; }
+
+function renderStatus(filterText) {
+  const body = document.getElementById("statusBody");
+  const f = (filterText || "").toLowerCase();
+  const rows = AREAS.filter(a => a.name.toLowerCase().includes(f) || a.slug.includes(f));
+  document.getElementById("areaCount").textContent = `${rows.length} / ${AREAS.length}`;
+  body.innerHTML = rows.map(a => `
+    <tr>
+      <td>${a.name}</td>
+      <td>${a.type}</td>
+      ${mark(a.generated)}${mark(a.pushed)}${mark(a.scraped)}${mark(a.about)}${mark(a.processed)}${mark(a.staged)}${mark(a.promoted)}
+    </tr>
+  `).join("");
+}
+
+function renderAreaSelect() {
+  const sel = document.getElementById("areaSelect");
+  const actionId = document.getElementById("actionSelect").value;
+  const action = ACTIONS.find(a => a.id === actionId);
+  if (!action || !action.needs_area) {
+    sel.innerHTML = `<option value="">(no area needed)</option>`;
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = AREAS.map(a => `<option value="${a.slug}">${a.name} (${a.type})</option>`).join("");
+}
+
+function renderActionSelect() {
+  const sel = document.getElementById("actionSelect");
+  const byCategory = {};
+  ACTIONS.forEach(a => { (byCategory[a.category] = byCategory[a.category] || []).push(a); });
+  sel.innerHTML = Object.entries(byCategory).map(([cat, items]) =>
+    `<optgroup label="${cat}">` +
+    items.map(a => `<option value="${a.id}">${a.label}</option>`).join("") +
+    `</optgroup>`
+  ).join("");
+}
+
+function renderParamBox() {
+  const actionId = document.getElementById("actionSelect").value;
+  const defs = PARAM_DEFS[actionId] || [];
+  document.getElementById("paramBox").innerHTML = defs.map(p =>
+    `<label class="chk"><input type="checkbox" data-param="${p.key}"> ${p.label}</label>`
+  ).join(" ");
+}
+
+async function loadStatus() {
+  const res = await fetch("/api/status");
+  const data = await res.json();
+  AREAS = data.areas;
+  ACTIONS = data.actions;
+  renderActionSelect();
+  renderAreaSelect();
+  renderParamBox();
+  renderStatus(document.getElementById("filterBox").value);
+}
+
+function appendLog(text, cls) {
+  const log = document.getElementById("log");
+  if (log.textContent === "(nothing run yet)") log.textContent = "";
+  const span = document.createElement("span");
+  if (cls) span.className = cls;
+  span.textContent = text;
+  log.appendChild(span);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function runAction() {
+  const actionId = document.getElementById("actionSelect").value;
+  const slug = document.getElementById("areaSelect").disabled ? null : document.getElementById("areaSelect").value;
+  const params = {};
+  document.querySelectorAll("#paramBox input[type=checkbox]").forEach(cb => {
+    params[cb.dataset.param] = cb.checked;
+  });
+
+  const btn = document.getElementById("runBtn");
+  btn.disabled = true;
+  document.getElementById("log").textContent = "";
+  appendLog("Starting...\n");
+
+  try {
+    const res = await fetch("/api/run", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action_id: actionId, slug, params}),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      appendLog(`Error: ${err.error}\n`, "exit-bad");
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let first = true;
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      let text = decoder.decode(value, {stream: true});
+      if (first) {
+        appendLog(text, "cmd");
+        first = false;
+      } else {
+        appendLog(text);
+      }
+    }
+    appendLog("", "exit-ok");
+  } catch (e) {
+    appendLog(`Request failed: ${e}\n`, "exit-bad");
+  } finally {
+    btn.disabled = false;
+    loadStatus();
+  }
+}
+
+document.getElementById("actionSelect").addEventListener("change", () => { renderAreaSelect(); renderParamBox(); });
+document.getElementById("runBtn").addEventListener("click", runAction);
+document.getElementById("filterBox").addEventListener("input", e => renderStatus(e.target.value));
+
+loadStatus();
+</script>
+</body>
+</html>

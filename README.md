@@ -5,6 +5,35 @@ produce a curated list per area.
 
 ---
 
+## Control centre
+
+A small local web dashboard over everything below — if the CLI commands in
+this README are hard to keep track of, start here instead.
+
+```bash
+pip install -e ".[control_centre]"   # flask, one-time
+python3 control_centre/server.py
+#   -> opens http://127.0.0.1:5151 in your browser automatically
+```
+
+One page: a status table (which areas are generated / pushed / scraped /
+About-scraped / processed / staged to `Clacton-etc/inputs/` / promoted to
+`Clacton-etc/groups/`), and an action panel covering prep/push/pull/pull-about,
+running the pipeline (with `--context`/`--about`/`--stop-before-ai-assessment`
+checkboxes), and the four remote `libby` scripts. It does not reimplement any
+pipeline logic — every action shells out to the exact script/command you'd
+type yourself (see `control_centre/actions.py`), and **the literal command is
+always shown in the log, before and while it runs** — nothing happens that
+isn't visible. Local only (binds to `127.0.0.1`); every action is one of a
+fixed, known set, never a free-form shell box.
+
+The "Pushed" column is only as good as `.push_manifest`, which only
+`batch_pipeline.sh prep` writes to — a push done via plain `sync_scrape.sh
+push` (constituencies) or any ward push won't show as pushed there even if
+it genuinely was. Everything else reflects real local files directly.
+
+---
+
 ## Index — running the scripts
 
 | Script | Command | What it does |
@@ -460,6 +489,7 @@ tests/             unit tests for the shared parser
 pip install -e .                  # or: pip install -r requirements.txt
 pip install -e ".[us,dev]"        # + duckdb (US data-prep) and pytest
 pip install -e ".[local_about]"   # + selenium, for --about (see the About-context section above)
+pip install -e ".[control_centre]"  # + flask, for the control centre (see below)
 ```
 
 Create a `.env` in the repo root with your OpenRouter key (shared by both

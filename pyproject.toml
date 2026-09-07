@@ -16,6 +16,7 @@ dependencies = [
 us = ["duckdb"]
 dev = ["pytest"]
 local_about = ["selenium>=4.6"]
+control_centre = ["flask>=3.0"]
 
 [tool.setuptools]
 packages = ["libby_core", "uk", "us"]
