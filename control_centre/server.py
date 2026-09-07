@@ -33,6 +33,14 @@ PORT = 5151
 
 app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "static"))
 
+# Tracks the one currently-running command, if any, so /api/kill has
+# something to stop. This is a single-user local tool — one slot is enough;
+# a second run started before the first finishes just replaces the tracked
+# process (its own /api/run call still streams its own output/exit code
+# regardless of tracking).
+_current_proc_lock = threading.Lock()
+_current_proc: subprocess.Popen | None = None
+
 
 @app.route("/")
 def index():
@@ -92,6 +100,8 @@ def _stream_command(cmd: list[str], cwd: Path | None = None):
     """Generator: first line is the literal command (so the UI can show
     exactly what's running before any output arrives), then each
     stdout/stderr line as it's produced, then a final exit-code line."""
+    global _current_proc
+
     yield f"$ {shlex.join(cmd)}\n\n"
     try:
         proc = subprocess.Popen(
@@ -103,10 +113,20 @@ def _stream_command(cmd: list[str], cwd: Path | None = None):
         yield f"!! Could not start command: {e}\n"
         return
 
-    for line in proc.stdout:
-        yield line
-    proc.wait()
-    yield f"\n[exit code {proc.returncode}]\n"
+    with _current_proc_lock:
+        _current_proc = proc
+    try:
+        for line in proc.stdout:
+            yield line
+        proc.wait()
+        if proc.returncode is not None and proc.returncode < 0:
+            yield f"\n[stopped — signal {-proc.returncode}]\n"
+        else:
+            yield f"\n[exit code {proc.returncode}]\n"
+    finally:
+        with _current_proc_lock:
+            if _current_proc is proc:
+                _current_proc = None
 
 
 @app.route("/api/run", methods=["POST"])
@@ -116,6 +136,27 @@ def api_run():
         body, code = error
         return jsonify(body), code
     return Response(_stream_command(cmd), mimetype="text/plain")
+
+
+@app.route("/api/kill", methods=["POST"])
+def api_kill():
+    """Stops the currently-running command, if any. For a remote (ssh)
+    command this terminates the local ssh client — that closes the
+    connection, which in practice ends the remote command too for the
+    plain (non-backgrounded) `ssh host 'cmd'` form every action here uses,
+    but isn't a hard guarantee the way it is for a local process."""
+    with _current_proc_lock:
+        proc = _current_proc
+    if proc is None or proc.poll() is not None:
+        return jsonify({"ok": False, "message": "No command is currently running"}), 400
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=3)
+    return jsonify({"ok": True, "message": "Stop signal sent"})
 
 
 def main():

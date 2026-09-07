@@ -112,6 +112,15 @@
     font-family: var(--font-ui);
   }
   .btn-secondary:hover { border-color: var(--neon); color: var(--neon); background: rgba(16,221,143,.06); }
+  .log-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .log-head h2 { margin: 0; }
+  .btn-danger {
+    background: transparent; color: var(--red); border: 1px solid #5a2530;
+    border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 12.5px; font-weight: 700;
+    font-family: var(--font-ui);
+  }
+  .btn-danger:hover:not(:disabled) { background: rgba(255,122,134,.1); border-color: var(--red); }
+  .btn-danger:disabled { color: #4a3a3d; border-color: var(--border); cursor: not-allowed; }
   label.chk { font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
   label.chk input { accent-color: var(--neon); width: 14px; height: 14px; }
   #log {
@@ -164,7 +173,10 @@
 </section>
 
 <section>
-  <h2>Command log</h2>
+  <div class="log-head">
+    <h2>Command log</h2>
+    <button class="btn-danger" id="killBtn" type="button" disabled>■ Stop</button>
+  </div>
   <div id="log">(nothing run yet)</div>
 </section>
 
@@ -513,6 +525,7 @@ async function runAction() {
 
   const btn = document.getElementById("runBtn");
   btn.disabled = true;
+  document.getElementById("killBtn").disabled = false;
   document.getElementById("log").textContent = "";
   appendLog("Starting...\n");
 
@@ -545,8 +558,23 @@ async function runAction() {
     appendLog(`Request failed: ${e}\n`, "exit-bad");
   } finally {
     btn.disabled = false;
+    document.getElementById("killBtn").disabled = true;
     loadStatus();
   }
+}
+
+async function killCurrent() {
+  const killBtn = document.getElementById("killBtn");
+  killBtn.disabled = true;
+  try {
+    const res = await fetch("/api/kill", {method: "POST"});
+    const data = await res.json();
+    appendLog(`\n[${data.message}]\n`, data.ok ? "cmd" : "exit-bad");
+  } catch (e) {
+    appendLog(`\nStop request failed: ${e}\n`, "exit-bad");
+  }
+  // Left disabled — the run's own `finally` re-enables it if something is
+  // still (or newly) running; avoids a stale-enabled button after a stop.
 }
 
 document.getElementById("actionSelect").addEventListener("change", () => {
@@ -557,6 +585,7 @@ document.getElementById("actionSelect").addEventListener("change", () => {
   updatePreview();
 });
 document.getElementById("runBtn").addEventListener("click", runAction);
+document.getElementById("killBtn").addEventListener("click", killCurrent);
 document.getElementById("pickNextBtn").addEventListener("click", pickNext);
 document.getElementById("pick5Btn").addEventListener("click", pick5);
 document.getElementById("filterBox").addEventListener("input", e => renderStatus(e.target.value));
