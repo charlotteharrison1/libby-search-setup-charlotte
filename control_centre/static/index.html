@@ -106,6 +106,12 @@
   }
   button.run:hover { background: #33f2b5; }
   button.run:disabled { background: #2b4238; color: #6f9382; box-shadow: none; cursor: not-allowed; }
+  .btn-secondary {
+    background: transparent; color: var(--neon-dim); border: 1px solid var(--border-bright);
+    border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600;
+    font-family: var(--font-ui);
+  }
+  .btn-secondary:hover { border-color: var(--neon); color: var(--neon); background: rgba(16,221,143,.06); }
   label.chk { font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
   label.chk input { accent-color: var(--neon); width: 14px; height: 14px; }
   #log {
@@ -148,9 +154,12 @@
       <div class="suggestions" id="areaSuggestions"></div>
     </div>
     <span id="paramBox"></span>
+    <button class="btn-secondary" id="pickNextBtn" type="button" title="Next constituency not yet generated/pushed">Pick next</button>
+    <button class="btn-secondary" id="pick5Btn" type="button" title="Next 5 constituencies not yet generated/pushed">Pick 5</button>
     <button class="run" id="runBtn">Run</button>
   </div>
   <div class="hint" id="actionHint"></div>
+  <div class="hint" id="bulkList" style="display:none"></div>
   <div id="cmdPreview" class="cmd-preview">$ …</div>
 </section>
 
@@ -185,9 +194,11 @@
 let AREAS = [];
 let ACTIONS = [];
 let SELECTED_SLUG = null;
+let BULK_NAMES = [];
 
 const PARAM_DEFS = {
   prep: [{key: "force", label: "--force"}],
+  prep_bulk: [{key: "force", label: "--force"}],
   push: [],
   pull: [],
   pull_about: [],
@@ -206,6 +217,58 @@ function mark(v) { return `<td class="${v ? 'mark-yes' : 'mark-no'}">${v ? '✓'
 
 function isTouched(a) {
   return a.generated || a.pushed || a.scraped || a.about || a.processed || a.staged || a.promoted;
+}
+
+// "Not yet generated/pushed" = still a candidate for prep — constituencies
+// only (prep is constituency-only, see actions.py's _build_prep). Sorted
+// alphabetically for a deterministic "next" across repeated clicks.
+function nextUntouchedConstituencies(n) {
+  return AREAS
+    .filter(a => a.type === "constituency" && (!a.generated || !a.pushed))
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, n);
+}
+
+function renderBulkList() {
+  const box = document.getElementById("bulkList");
+  const isBulk = currentAction() && currentAction().id === "prep_bulk";
+  if (!isBulk) { box.style.display = "none"; return; }
+  box.style.display = "";
+  box.textContent = BULK_NAMES.length
+    ? `Picked: ${BULK_NAMES.join(", ")}`
+    : `Click "Pick 5" to choose the next 5 un-generated/un-pushed constituencies.`;
+}
+
+function pickNext() {
+  const candidates = nextUntouchedConstituencies(1);
+  if (candidates.length === 0) {
+    appendLog("Nothing to pick — every constituency is already generated and pushed.\n", "exit-bad");
+    return;
+  }
+  document.getElementById("actionSelect").value = "prep";
+  BULK_NAMES = [];
+  updateAreaPickerVisibility();
+  renderParamBox();
+  SELECTED_SLUG = candidates[0].slug;
+  document.getElementById("areaInput").value = candidates[0].name;
+  renderBulkList();
+  updatePreview();
+}
+
+function pick5() {
+  const candidates = nextUntouchedConstituencies(5);
+  if (candidates.length === 0) {
+    appendLog("Nothing to pick — every constituency is already generated and pushed.\n", "exit-bad");
+    return;
+  }
+  document.getElementById("actionSelect").value = "prep_bulk";
+  BULK_NAMES = candidates.map(a => a.name);
+  SELECTED_SLUG = null;
+  updateAreaPickerVisibility();
+  renderParamBox();
+  renderBulkList();
+  updatePreview();
 }
 
 const STATUS_COLUMNS = [
@@ -324,6 +387,16 @@ function renderParamBox() {
   });
 }
 
+function buildParams() {
+  const params = {};
+  document.querySelectorAll("#paramBox input[type=checkbox]").forEach(cb => {
+    params[cb.dataset.param] = cb.checked;
+  });
+  const action = currentAction();
+  if (action && action.id === "prep_bulk") params.names = BULK_NAMES;
+  return params;
+}
+
 // Calls the SAME build_command() the real run uses (via /api/preview), so
 // this can never drift from what actually executes — never a client-side
 // guess at the command string.
@@ -339,11 +412,7 @@ async function updatePreview() {
     return;
   }
 
-  const params = {};
-  document.querySelectorAll("#paramBox input[type=checkbox]").forEach(cb => {
-    params[cb.dataset.param] = cb.checked;
-  });
-
+  const params = buildParams();
   const token = ++PREVIEW_TOKEN;
   box.textContent = "$ …";
   box.className = "cmd-preview pending";
@@ -419,6 +488,7 @@ async function loadStatus() {
   renderActionSelect();
   updateAreaPickerVisibility();
   renderParamBox();
+  renderBulkList();
   renderStatus(document.getElementById("filterBox").value);
   updatePreview();
 }
@@ -439,10 +509,7 @@ async function runAction() {
     appendLog("Pick an area from the search box first.\n", "exit-bad");
     return;
   }
-  const params = {};
-  document.querySelectorAll("#paramBox input[type=checkbox]").forEach(cb => {
-    params[cb.dataset.param] = cb.checked;
-  });
+  const params = buildParams();
 
   const btn = document.getElementById("runBtn");
   btn.disabled = true;
@@ -482,8 +549,16 @@ async function runAction() {
   }
 }
 
-document.getElementById("actionSelect").addEventListener("change", () => { updateAreaPickerVisibility(); renderParamBox(); updatePreview(); });
+document.getElementById("actionSelect").addEventListener("change", () => {
+  if (currentAction() && currentAction().id !== "prep_bulk") BULK_NAMES = [];
+  updateAreaPickerVisibility();
+  renderParamBox();
+  renderBulkList();
+  updatePreview();
+});
 document.getElementById("runBtn").addEventListener("click", runAction);
+document.getElementById("pickNextBtn").addEventListener("click", pickNext);
+document.getElementById("pick5Btn").addEventListener("click", pick5);
 document.getElementById("filterBox").addEventListener("input", e => renderStatus(e.target.value));
 document.getElementById("showAllToggle").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
 document.getElementById("typeFilter").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));

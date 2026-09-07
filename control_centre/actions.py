@@ -40,6 +40,20 @@ def _build_prep(row, params):
     return cmd
 
 
+def _build_prep_bulk(row, params):
+    # Doesn't use `row`/needs_area — the frontend's "Pick 5" resolves which
+    # areas from the already-loaded status data (no server round-trip to
+    # decide "next"), and sends the chosen names directly.
+    names = params.get("names") or []
+    if not names:
+        raise UnknownAction("Bulk prep needs at least one area name (pick via \"Pick 5\" first)")
+    cmd = [str(REPO_ROOT / "batch_pipeline.sh"), "prep"]
+    if params.get("force"):
+        cmd.append("--force")
+    cmd.extend(names)
+    return cmd
+
+
 def _build_push(row, params):
     cmd = [str(REPO_ROOT / "sync_scrape.sh"), "push"]
     if row["type"] == "ward":
@@ -116,6 +130,7 @@ def _build_pick_next_about_target(row, params):
 # next" scans the device itself for what to do next).
 ACTIONS = {
     "prep":                    ("Generate + push (prep)",        "Prep",    True,  _build_prep),
+    "prep_bulk":               ("Bulk prep (Pick 5)",            "Prep",    False, _build_prep_bulk),
     "push":                    ("Push",                          "Push",    True,  _build_push),
     "pull":                    ("Pull scraped groups",           "Pull",    True,  _build_pull),
     "pull_about":              ("Pull About-scrape",             "Pull",    True,  _build_pull_about),
