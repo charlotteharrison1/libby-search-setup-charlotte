@@ -52,7 +52,7 @@ def api_status():
     rows = status.build_status_table()
     action_list = [
         {"id": aid, "label": label, "category": category, "needs_area": needs_area}
-        for aid, (label, category, needs_area, _builder) in actions.ACTIONS.items()
+        for aid, (label, category, needs_area, _builder, _send_enter) in actions.ACTIONS.items()
     ]
     return jsonify({"areas": rows, "actions": action_list})
 
@@ -96,22 +96,37 @@ def api_preview():
     return jsonify({"command": shlex.join(cmd)})
 
 
-def _stream_command(cmd: list[str], cwd: Path | None = None):
+def _stream_command(cmd: list[str], cwd: Path | None = None, send_enter: bool = False):
     """Generator: first line is the literal command (so the UI can show
     exactly what's running before any output arrives), then each
-    stdout/stderr line as it's produced, then a final exit-code line."""
+    stdout/stderr line as it's produced, then a final exit-code line.
+
+    send_enter=True pipes a newline into the process's stdin right after it
+    starts — for run_remote_scrape, whose remote script.py blocks on a
+    login-confirmation keypress that a real interactive SSH session would
+    supply by hand (see actions.needs_login_confirm). The byte just waits
+    in the pipe until the remote input() call actually reads it, so there's
+    no race with how long the browser takes to open first."""
     global _current_proc
 
     yield f"$ {shlex.join(cmd)}\n\n"
     try:
         proc = subprocess.Popen(
             cmd, cwd=cwd or REPO_ROOT,
+            stdin=subprocess.PIPE if send_enter else None,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1,
         )
     except FileNotFoundError as e:
         yield f"!! Could not start command: {e}\n"
         return
+
+    if send_enter:
+        try:
+            proc.stdin.write("\n")
+            proc.stdin.close()
+        except OSError:
+            pass  # process may have already exited; nothing to send to
 
     with _current_proc_lock:
         _current_proc = proc
@@ -131,11 +146,13 @@ def _stream_command(cmd: list[str], cwd: Path | None = None):
 
 @app.route("/api/run", methods=["POST"])
 def api_run():
-    cmd, error = _resolve_command(request.get_json(force=True))
+    body = request.get_json(force=True)
+    cmd, error = _resolve_command(body)
     if error:
-        body, code = error
-        return jsonify(body), code
-    return Response(_stream_command(cmd), mimetype="text/plain")
+        error_body, code = error
+        return jsonify(error_body), code
+    send_enter = actions.needs_login_confirm(body.get("action_id"))
+    return Response(_stream_command(cmd, send_enter=send_enter), mimetype="text/plain")
 
 
 @app.route("/api/kill", methods=["POST"])
