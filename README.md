@@ -77,16 +77,52 @@ About-scrape helps every other area that shares a candidate group, not just
 its own, and a group only ever needs to be About-scraped once, by anyone.
 
 Since About-scraping every group in every area isn't realistic (it's slow,
-one Selenium page-load per group), the other half of this is escalating on
-uncertainty: run cheaply without `--context` first, then only About-scrape
-the specific groups that came back `"Unsure"`.
+one Selenium page-load per group), the rest of this is escalating on
+uncertainty: run cheaply first, then only About-scrape the specific groups
+that came back `"Unsure"`. Two ways to do that — pick based on scale:
+
+- **`--about`** (recommended for one area at a time): scrapes inline, right
+  here, this same run, using a **local** Chrome session on your own
+  machine with your own Facebook login. No separate device, no waiting —
+  one command, finished area.
+- **`uk.queue_unsure_for_about`**: batches Unsure groups across *everything*
+  you've already run into one file for a proper About-scrape session on
+  `libby` — better suited to a big backlog than to finishing the one area
+  you're working on right now.
 
 | Script | Command | What it does |
 |---|---|---|
 | **Run with context** | `python -m uk.pipeline --constituency "Name" --context` or `python -m uk.pipeline_ward --context` | Loads the global cache once per run, matches each candidate group by URL, and adds any matched About text to its assessment prompt. Identical to a normal run for any group with no cached text, or whenever `--context` is omitted — never a behaviour change by accident. |
-| **Queue what's still ambiguous** | `python -m uk.queue_unsure_for_about` | Scans every `groups_*.csv` already produced (constituency and ward alike), collects groups still assessed `"Unsure"`, drops any that already have About-context (re-scraping one wouldn't change an already-informed "Unsure"), dedupes by URL, and writes `uk/output/unsure_queue.csv` — a `groups_file` in exactly the shape `scrape_group_about.py` already expects, ready to point it at with no changes to that script. |
+| **Run with local escalation** | `python -m uk.pipeline --constituency "Name" --about` or `python -m uk.pipeline_ward --about` | Implies `--context`. After the first assessment pass, About-scrapes (locally, inline) whatever came back `"Unsure"` and isn't already cached, then re-assesses just those groups — one command, one finished area, no follow-up step. Capped at `--about-limit` groups per area (default 25) as a safety valve. Requires one-time local setup — see below. |
+| **Queue what's still ambiguous** | `python -m uk.queue_unsure_for_about` | Scans every `groups_*.csv` already produced (constituency and ward alike), collects groups still assessed `"Unsure"`, drops any that already have About-context, dedupes by URL, and writes `uk/output/unsure_queue.csv` — a `groups_file` in exactly the shape `scrape_group_about.py` already expects, ready to point it at with no changes to that script. |
 
-**Cheat sheet — the full loop, start to finish:**
+### One-time setup for `--about`
+
+```bash
+pip install selenium          # not a normal dependency of this repo — only --about needs it
+python -m uk.local_about_scraper --login
+#   opens a real Chrome window; log into Facebook with YOUR OWN account,
+#   then press Enter in the terminal. The session persists after this —
+#   every future --about run is unattended.
+```
+
+Uses Selenium Manager (selenium≥4.6) to auto-resolve a matching
+chromedriver for whatever Chrome is installed — no manual driver download.
+This is deliberately a **personal-account, small-scale** tool: same
+conservative pacing as any other About-scrape in this repo, plus a hard cap
+(`--about-limit`) and a circuit breaker on consecutive failures, so a single
+run can't turn into an unexpectedly large unattended session. It is not a
+replacement for `libby`'s main scrape, which stays there for long,
+overnight-paced, unattended runs.
+
+**Cheat sheet — one area, start to finish:**
+```bash
+python -m uk.pipeline --constituency "Aldershot" --about
+#   -> pass 1 assessment, local About-scrape of whatever's Unsure and
+#      uncached, pass 2 on just those, final output — one command
+```
+
+**Cheat sheet — batching a backlog across many areas instead:**
 ```bash
 # 1. Run (or re-run) some areas with --context, using whatever's cached so far
 python -m uk.pipeline --constituency "Aldershot" --context
@@ -120,8 +156,8 @@ scp libby:/home/pub/libby_download/about_pages/unsure_queue/unsure_queue_about.c
 python -m uk.pipeline --constituency "Aldershot" --context
 ```
 
-See `uk/about_context.py` and `uk/queue_unsure_for_about.py` for the full
-design rationale.
+See `uk/about_context.py`, `uk/local_about_scraper.py`, and
+`uk/queue_unsure_for_about.py` for the full design rationale.
 
 ---
 
@@ -421,8 +457,9 @@ tests/             unit tests for the shared parser
 
 ```bash
 # Python 3.11+ (developed on the pyenv env "libbylist", Python 3.12).
-pip install -e .            # or: pip install -r requirements.txt
-pip install -e ".[us,dev]"  # + duckdb (US data-prep) and pytest
+pip install -e .                  # or: pip install -r requirements.txt
+pip install -e ".[us,dev]"        # + duckdb (US data-prep) and pytest
+pip install -e ".[local_about]"   # + selenium, for --about (see the About-context section above)
 ```
 
 Create a `.env` in the repo root with your OpenRouter key (shared by both

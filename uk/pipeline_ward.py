@@ -53,7 +53,7 @@ from pathlib import Path
 import pandas as pd
 
 from libby_core import assessment, descriptions
-from uk import about_context, data_loading, parsing, ward_geodata
+from uk import about_context, data_loading, local_about_scraper, parsing, ward_geodata
 from uk.generate_search import slugify
 from uk.pipeline import _record_discards
 from uk.settings import (
@@ -289,6 +289,8 @@ def _process_file(
     force_descriptions: bool,
     about_lookup: dict[str, str],
     discards: list[dict],
+    use_about: bool = False,
+    about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
 ) -> list[pd.DataFrame]:
     """Process one scraped ward file. Returns the final per-ward DataFrames
     it wrote (empty list if stop_before_ai_assessment, or nothing survived).
@@ -393,6 +395,63 @@ def _process_file(
         )
         combined["first_assessment"] = assessed.get("first_assessment")
 
+        # ── --about: escalate on uncertainty, inline, this same run ──────────
+        # See uk/pipeline.py's identical block and uk/local_about_scraper.py's
+        # module docstring for the full design rationale.
+        if use_about and not combined.empty:
+            is_unsure = combined["first_assessment"].astype(str).str.strip().str.casefold() == "unsure"
+            has_context = (
+                combined[context_column].notna()
+                if context_column and context_column in combined.columns
+                else pd.Series(False, index=combined.index)
+            )
+            to_scrape = combined[is_unsure & ~has_context]
+
+            if to_scrape.empty:
+                logger.info("  --about: nothing left to scrape for %s (no uncached Unsure groups)", ward_name)
+            else:
+                urls = to_scrape["url"].tolist()
+                names = dict(zip(to_scrape["url"], to_scrape["name"]))
+                logger.info(
+                    "  --about: %d Unsure, uncached group(s) to scrape locally for %s",
+                    len(urls), ward_name,
+                )
+                try:
+                    scraped_df = local_about_scraper.scrape_about_locally(
+                        urls, name_by_url=names, max_groups=about_limit,
+                    )
+                except (local_about_scraper.LocalAboutScraperUnavailable, RuntimeError) as e:
+                    logger.warning("  --about unavailable this run (%s) — continuing without it", e)
+                    scraped_df = pd.DataFrame()
+
+                if not scraped_df.empty:
+                    # Bare slug (matches pull_about.sh's ward naming — the
+                    # main scrape's own slug), deliberately NOT ward_id.
+                    scraped_path = local_about_scraper.write_local_about(
+                        scraped_df, slugify(ward_name), out_dir=ABOUT_PAGES_DIR,
+                    )
+                    new_context = about_context.load_about_context(scraped_path)
+                    about_lookup.update(new_context)
+
+                    if "about_context" not in combined.columns:
+                        combined["about_context"] = pd.NA
+                    newly_matched = combined["url"].isin(new_context)
+                    combined.loc[newly_matched, "about_context"] = (
+                        combined.loc[newly_matched, "url"].map(new_context)
+                    )
+                    context_column = "about_context"
+
+                    reassess_rows = combined[newly_matched]
+                    logger.info(
+                        "  Re-assessing %d group(s) with fresh About context for %s",
+                        len(reassess_rows), ward_name,
+                    )
+                    reassessed = assessment.assess_groups(
+                        df=reassess_rows, area_description=desc, area_kind=AREA_KIND,
+                        context_column=context_column,
+                    )
+                    combined.loc[newly_matched, "first_assessment"] = reassessed["first_assessment"].values
+
         before = combined
         final = combined[combined["first_assessment"] != "No"].copy()
         discards.extend(_record_discards(
@@ -447,10 +506,16 @@ def run(
     min_posts_a_month: float = DEFAULT_MIN_POSTS_A_MONTH,
     force_descriptions: bool = False,
     use_context: bool = False,
+    use_about: bool = False,
+    about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
 ) -> pd.DataFrame:
     """Process one or more scraped ward files (default: every file in
     WARD_SCRAPED_DIR — generate_search_ward.py writes one per ward) and
     write a combined ward_output.csv across all of them."""
+    # --about implies --context: there's no reason to scrape fresh About
+    # text and then not use it.
+    use_context = use_context or use_about
+
     if input_paths is None:
         input_paths = sorted(WARD_SCRAPED_DIR.glob("*_search_targets.csv"))
         if not input_paths:
@@ -475,7 +540,7 @@ def run(
     for path in input_paths:
         all_final.extend(_process_file(
             Path(path), stop_before_ai_assessment, min_members, min_posts_a_month,
-            force_descriptions, about_lookup, discards,
+            force_descriptions, about_lookup, discards, use_about, about_limit,
         ))
 
     pd.DataFrame(discards, columns=WARD_DISCARD_COLUMNS).to_csv(
@@ -511,6 +576,24 @@ def main():
             "extra context for the relevance assessment."
         ),
     )
+    parser.add_argument(
+        "--about",
+        action="store_true",
+        help=(
+            "Implies --context. For groups still 'Unsure' after the first "
+            "assessment pass and not already in the About cache, About-scrape "
+            "them inline using a LOCAL Chrome session (this machine, your own "
+            "Facebook login — see uk/local_about_scraper.py) and re-assess "
+            "just those groups. One-time setup: pip install selenium, then "
+            "`python -m uk.local_about_scraper --login`."
+        ),
+    )
+    parser.add_argument(
+        "--about-limit",
+        type=int,
+        default=local_about_scraper.DEFAULT_MAX_GROUPS,
+        help=f"Max groups to About-scrape locally per ward with --about (default: {local_about_scraper.DEFAULT_MAX_GROUPS})",
+    )
     args = parser.parse_args()
 
     run(
@@ -520,6 +603,8 @@ def main():
         min_posts_a_month=args.min_posts_a_month,
         force_descriptions=args.force,
         use_context=args.context,
+        use_about=args.about,
+        about_limit=args.about_limit,
     )
 
 

@@ -67,3 +67,18 @@ WARD_DISCARDED_PATH = WARD_OUTPUT_DIR / "discarded.csv"
 # ready to hand to libby_download's scrape_group_about.py. Regenerated fresh
 # each run, not accumulated — see uk/queue_unsure_for_about.py.
 UNSURE_QUEUE_PATH = OUTPUT_DIR / "unsure_queue.csv"
+
+# uk/local_about_scraper.py: --about drives a local, already-logged-in
+# Chrome session (your own machine, your own Facebook login — see that
+# module's docstring for why) to About-scrape just the Unsure/uncached
+# groups from the current run, inline, no separate trip to libby. Both are
+# machine-local and gitignored (LOCAL_CHROME_PROFILE_PATH lives under
+# uk/data/, already entirely ignored); LIBBY_DOWNLOAD_PATH is overridable
+# via the LIBBY_DOWNLOAD_PATH env var for a machine where the sibling repo
+# isn't checked out at this default path.
+import os
+
+LOCAL_CHROME_PROFILE_PATH: Path = DATA_DIR / "local_chrome_profile"
+LIBBY_DOWNLOAD_PATH: Path = Path(
+    os.environ.get("LIBBY_DOWNLOAD_PATH", "~/vs_code/libby_download/libby_download")
+).expanduser()

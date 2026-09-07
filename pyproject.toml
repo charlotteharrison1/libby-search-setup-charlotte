@@ -15,6 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 us = ["duckdb"]
 dev = ["pytest"]
+local_about = ["selenium>=4.6"]
 
 [tool.setuptools]
 packages = ["libby_core", "uk", "us"]

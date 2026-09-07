@@ -21,7 +21,8 @@ from pathlib import Path
 import pandas as pd
 
 from libby_core import assessment, descriptions
-from uk import about_context, data_loading, geo, parsing
+from uk import about_context, data_loading, geo, local_about_scraper, parsing
+from uk.generate_search import slugify
 from uk.settings import (
     ABOUT_PAGES_DIR,
     DESCRIPTIONS_PATH,
@@ -366,7 +367,13 @@ def run(
     stop_before_ai_assessment: bool = False,
     input_path: Path | None = None,
     use_context: bool = False,
+    use_about: bool = False,
+    about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
 ):
+    # --about implies --context: there's no reason to scrape fresh About
+    # text and then not use it.
+    use_context = use_context or use_about
+
     # ── Phase 1: One-time setup ─────────────────────────────────────────────
     if input_path:
         logger.info("Using input file: %s", input_path)
@@ -378,7 +385,9 @@ def run(
     # Loaded once for the whole run, not per constituency — see
     # uk.about_context.load_global_about_context for why a single global,
     # URL-keyed cache (unioning every about_pages CSV ever pulled, for any
-    # constituency or ward) is preferred over one file per area.
+    # constituency or ward) is preferred over one file per area. --about
+    # grows this same dict in place as it scrapes, so later areas in a
+    # multi-area run benefit from earlier areas' local scrapes too.
     about_lookup = about_context.load_global_about_context(ABOUT_PAGES_DIR) if use_context else {}
 
     # PCON mapping — fall back to scrape data if file is missing
@@ -566,6 +575,67 @@ def run(
             if "first_assessment" in assessed.columns:
                 combined["first_assessment"] = assessed["first_assessment"].values
 
+        # ── --about: escalate on uncertainty, inline, this same run ──────────
+        # Scrape only groups pass-1 couldn't resolve (Unsure) and that
+        # don't already have About text from somewhere else — small,
+        # targeted, and using a local Selenium session (your own machine,
+        # your own Facebook login) rather than a separate trip to libby.
+        # See uk/local_about_scraper.py's module docstring for the full
+        # design rationale and the one-time setup it requires.
+        if use_about and not combined.empty:
+            is_unsure = combined["first_assessment"].astype(str).str.strip().str.casefold() == "unsure"
+            has_context = (
+                combined[context_column].notna()
+                if context_column and context_column in combined.columns
+                else pd.Series(False, index=combined.index)
+            )
+            to_scrape = combined[is_unsure & ~has_context]
+
+            if to_scrape.empty:
+                logger.info("  --about: nothing left to scrape for %s (no uncached Unsure groups)", pcon24nm)
+            else:
+                urls = to_scrape["url"].tolist()
+                names = dict(zip(to_scrape["url"], to_scrape["name"]))
+                logger.info(
+                    "  --about: %d Unsure, uncached group(s) to scrape locally for %s",
+                    len(urls), pcon24nm,
+                )
+                try:
+                    scraped_df = local_about_scraper.scrape_about_locally(
+                        urls, name_by_url=names, max_groups=about_limit,
+                    )
+                except (local_about_scraper.LocalAboutScraperUnavailable, RuntimeError) as e:
+                    logger.warning("  --about unavailable this run (%s) — continuing without it", e)
+                    scraped_df = pd.DataFrame()
+
+                if not scraped_df.empty:
+                    scraped_path = local_about_scraper.write_local_about(
+                        scraped_df, slugify(pcon24nm), out_dir=ABOUT_PAGES_DIR,
+                    )
+                    new_context = about_context.load_about_context(scraped_path)
+                    about_lookup.update(new_context)  # shared for the rest of this run too
+
+                    if "about_context" not in combined.columns:
+                        combined["about_context"] = pd.NA
+                    newly_matched = combined["url"].isin(new_context)
+                    combined.loc[newly_matched, "about_context"] = (
+                        combined.loc[newly_matched, "url"].map(new_context)
+                    )
+                    context_column = "about_context"
+
+                    reassess_rows = combined[newly_matched]
+                    logger.info(
+                        "  Re-assessing %d group(s) with fresh About context for %s",
+                        len(reassess_rows), pcon24nm,
+                    )
+                    reassessed = assessment.assess_groups(
+                        df=reassess_rows,
+                        area_description=desc,
+                        area_kind=AREA_KIND,
+                        context_column=context_column,
+                    )
+                    combined.loc[newly_matched, "first_assessment"] = reassessed["first_assessment"].values
+
         before = combined
         final_c = combined[combined["first_assessment"] != "No"].copy()
         discards += _record_discards(
@@ -727,6 +797,24 @@ def main():
             "extra context for the relevance assessment."
         ),
     )
+    parser.add_argument(
+        "--about",
+        action="store_true",
+        help=(
+            "Implies --context. For groups still 'Unsure' after the first "
+            "assessment pass and not already in the About cache, About-scrape "
+            "them inline using a LOCAL Chrome session (this machine, your own "
+            "Facebook login — see uk/local_about_scraper.py) and re-assess "
+            "just those groups. One-time setup: pip install selenium, then "
+            "`python -m uk.local_about_scraper --login`."
+        ),
+    )
+    parser.add_argument(
+        "--about-limit",
+        type=int,
+        default=local_about_scraper.DEFAULT_MAX_GROUPS,
+        help=f"Max groups to About-scrape locally per area with --about (default: {local_about_scraper.DEFAULT_MAX_GROUPS})",
+    )
     args = parser.parse_args()
 
     if args.stop_before_ai_assessment and not args.constituency:
@@ -738,6 +826,8 @@ def main():
         stop_before_ai_assessment=args.stop_before_ai_assessment,
         input_path=Path(args.input) if args.input else None,
         use_context=args.context,
+        use_about=args.about,
+        about_limit=args.about_limit,
     )
 
 
