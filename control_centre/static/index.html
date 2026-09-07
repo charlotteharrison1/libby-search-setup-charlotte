@@ -58,7 +58,11 @@
     font-family: var(--font-mono);
     color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase;
     letter-spacing: .04em; position: sticky; top: 0; background: var(--bg2);
+    cursor: pointer; user-select: none;
   }
+  th:hover { color: var(--neon-dim); }
+  th.sorted { color: var(--neon); }
+  th .arrow { color: var(--neon); margin-left: 3px; }
   tbody tr:hover { background: rgba(16, 221, 143, .06); }
   td.mark-yes { color: var(--neon); font-weight: 700; }
   td.mark-no { color: #4c6d58; }
@@ -155,15 +159,18 @@
   <h2>Status <span class="badge" id="areaCount"></span></h2>
   <div class="filter-row">
     <input id="filterBox" placeholder="Search all constituencies + wards...">
+    <select id="typeFilter">
+      <option value="">All types</option>
+      <option value="constituency">Constituency</option>
+      <option value="ward">Ward</option>
+    </select>
     <label class="chk"><input type="checkbox" id="showAllToggle"> show all (incl. untouched)</label>
+    <span class="hint" id="sortHint"></span>
   </div>
   <div class="table-wrap">
     <table id="statusTable">
       <thead>
-        <tr>
-          <th>Area</th><th>Type</th><th>Generated</th><th>Pushed</th>
-          <th>Scraped</th><th>About</th><th>Processed</th><th>Staged</th><th>Promoted</th>
-        </tr>
+        <tr id="statusHeadRow"></tr>
       </thead>
       <tbody id="statusBody"></tbody>
     </table>
@@ -197,17 +204,75 @@ function isTouched(a) {
   return a.generated || a.pushed || a.scraped || a.about || a.processed || a.staged || a.promoted;
 }
 
+const STATUS_COLUMNS = [
+  {key: "name", label: "Area", kind: "string"},
+  {key: "type", label: "Type", kind: "string"},
+  {key: "generated", label: "Generated", kind: "bool"},
+  {key: "pushed", label: "Pushed", kind: "bool"},
+  {key: "scraped", label: "Scraped", kind: "bool"},
+  {key: "about", label: "About", kind: "bool"},
+  {key: "processed", label: "Processed", kind: "bool"},
+  {key: "staged", label: "Staged", kind: "bool"},
+  {key: "promoted", label: "Promoted", kind: "bool"},
+];
+let SORT_KEY = "name";
+let SORT_DIR = 1; // 1 = ascending, -1 = descending
+
+function setSort(key) {
+  const col = STATUS_COLUMNS.find(c => c.key === key);
+  if (SORT_KEY === key) {
+    SORT_DIR *= -1;
+  } else {
+    SORT_KEY = key;
+    // Boolean columns default to "checked first" (descending); text columns A-Z.
+    SORT_DIR = col.kind === "bool" ? -1 : 1;
+  }
+  renderStatus(document.getElementById("filterBox").value);
+}
+
+function compareRows(a, b) {
+  const col = STATUS_COLUMNS.find(c => c.key === SORT_KEY);
+  let va = a[SORT_KEY], vb = b[SORT_KEY];
+  if (col.kind === "bool") {
+    va = va ? 1 : 0; vb = vb ? 1 : 0;
+  } else {
+    va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+  }
+  if (va < vb) return -1 * SORT_DIR;
+  if (va > vb) return 1 * SORT_DIR;
+  return a.name.localeCompare(b.name);
+}
+
+function renderStatusHead() {
+  const row = document.getElementById("statusHeadRow");
+  row.innerHTML = STATUS_COLUMNS.map(c => {
+    const sorted = c.key === SORT_KEY;
+    const arrow = sorted ? `<span class="arrow">${SORT_DIR === 1 ? "▲" : "▼"}</span>` : "";
+    return `<th data-key="${c.key}" class="${sorted ? 'sorted' : ''}">${c.label}${arrow}</th>`;
+  }).join("");
+  row.querySelectorAll("th").forEach(th => th.addEventListener("click", () => setSort(th.dataset.key)));
+
+  const col = STATUS_COLUMNS.find(c => c.key === SORT_KEY);
+  document.getElementById("sortHint").textContent =
+    `sorted by ${col.label} ${SORT_DIR === 1 ? "(asc)" : "(desc)"} — click a column header to sort`;
+}
+
 function renderStatus(filterText) {
   const body = document.getElementById("statusBody");
   const f = (filterText || "").toLowerCase();
   const showAll = document.getElementById("showAllToggle").checked;
+  const typeFilter = document.getElementById("typeFilter").value;
 
   let rows = showAll ? AREAS : AREAS.filter(isTouched);
+  if (typeFilter) rows = rows.filter(a => a.type === typeFilter);
   if (f) rows = rows.filter(a => a.name.toLowerCase().includes(f) || a.slug.includes(f));
+  rows = rows.slice().sort(compareRows);
 
   const touchedTotal = AREAS.filter(isTouched).length;
   document.getElementById("areaCount").textContent =
     showAll ? `${rows.length} shown / ${AREAS.length} total` : `${rows.length} shown / ${touchedTotal} touched`;
+
+  renderStatusHead();
 
   const shown = rows.slice(0, 800);
   body.innerHTML = shown.map(a => `
@@ -410,6 +475,7 @@ document.getElementById("actionSelect").addEventListener("change", () => { updat
 document.getElementById("runBtn").addEventListener("click", runAction);
 document.getElementById("filterBox").addEventListener("input", e => renderStatus(e.target.value));
 document.getElementById("showAllToggle").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
+document.getElementById("typeFilter").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
 initAreaPicker();
 loadStatus();
 </script>
