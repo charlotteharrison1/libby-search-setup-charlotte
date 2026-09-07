@@ -80,12 +80,16 @@
   }
   .area-picker { position: relative; }
   .area-picker input {
-    font-size: 13.5px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 5px;
+    font-size: 13.5px; padding: 8px 30px 8px 12px; border: 1px solid var(--border); border-radius: 5px;
     background: var(--bg2); width: 280px; color: var(--ink); font-family: inherit;
   }
   .area-picker input:focus { outline: none; border-color: var(--neon-dim); box-shadow: 0 0 0 3px var(--neon-glow); }
+  .area-picker::after {
+    content: "▾"; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); pointer-events: none; font-size: 11px;
+  }
   .suggestions {
-    position: absolute; top: 100%; left: 0; margin-top: 4px; width: 340px; max-height: 260px;
+    position: absolute; top: 100%; left: 0; margin-top: 4px; width: 340px; max-height: 340px;
     overflow-y: auto; background: var(--bg2); border: 1px solid var(--border-bright); border-radius: 6px;
     box-shadow: 0 12px 30px rgba(0,0,0,.6), 0 0 20px rgba(0,230,154,.08); z-index: 10; display: none;
   }
@@ -140,7 +144,7 @@
       <select id="actionSelect"></select>
     </div>
     <div class="area-picker" id="areaPicker">
-      <input id="areaInput" placeholder="Search all 650 constituencies + wards..." autocomplete="off">
+      <input id="areaInput" placeholder="Click to browse, or type to search..." autocomplete="off">
       <div class="suggestions" id="areaSuggestions"></div>
     </div>
     <span id="paramBox"></span>
@@ -368,14 +372,20 @@ async function updatePreview() {
 function renderSuggestions(query) {
   const box = document.getElementById("areaSuggestions");
   const q = query.trim().toLowerCase();
-  if (!q) { box.classList.remove("open"); box.innerHTML = ""; return; }
-  const matches = AREAS.filter(a => a.name.toLowerCase().includes(q) || a.slug.includes(q)).slice(0, 20);
+  // Empty query -> browse the full list (sorted, capped, scrollable) like a
+  // real dropdown; typing narrows it, same as before.
+  const pool = q ? AREAS.filter(a => a.name.toLowerCase().includes(q) || a.slug.includes(q)) : AREAS;
+  const sorted = pool.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const matches = sorted.slice(0, q ? 40 : 200);
   if (matches.length === 0) {
     box.innerHTML = `<div class="none">No matches</div>`;
   } else {
     box.innerHTML = matches.map(a =>
       `<div data-slug="${a.slug}"><span>${a.name}</span><span class="type-tag">${a.type}</span></div>`
     ).join("");
+    if (!q && pool.length > matches.length) {
+      box.innerHTML += `<div class="none">…and ${pool.length - matches.length} more — type to narrow down</div>`;
+    }
   }
   box.classList.add("open");
 }
@@ -385,7 +395,8 @@ function initAreaPicker() {
   const box = document.getElementById("areaSuggestions");
 
   input.addEventListener("input", () => { SELECTED_SLUG = null; renderSuggestions(input.value); });
-  input.addEventListener("focus", () => { if (input.value) renderSuggestions(input.value); });
+  input.addEventListener("focus", () => renderSuggestions(input.value));
+  input.addEventListener("click", () => renderSuggestions(input.value));
   document.addEventListener("click", (e) => {
     if (!document.getElementById("areaPicker").contains(e.target)) box.classList.remove("open");
   });
