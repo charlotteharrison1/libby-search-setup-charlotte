@@ -4,48 +4,145 @@
 <meta charset="utf-8">
 <title>Libby Control Centre</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 20px; background: #f7f7f8; color: #1a1a1a; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  .sub { color: #666; font-size: 13px; margin-bottom: 18px; }
-  section { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #555; margin: 0 0 10px; }
+  :root {
+    color-scheme: dark;
+    --neon: #10dd8f;
+    --neon-dim: #1fbd85;
+    --neon-glow: rgba(16, 221, 143, 0.25);
+    --ink: #e8f7ef;
+    --muted: #8fb3a0;
+    --border: #1c3a2d;
+    --border-bright: #275842;
+    --card: #0c1a14;
+    --bg: #071410;
+    --bg2: #0a1a14;
+    --red: #ff7a86;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scrollbar-color: var(--border-bright) var(--bg); }
+  body {
+    font-family: var(--font-ui);
+    margin: 0; padding: 28px 32px 60px;
+    background:
+      linear-gradient(rgba(16,221,143,.018) 1px, transparent 1px) 0 0 / 100% 24px,
+      radial-gradient(circle at 12% -10%, rgba(16,221,143,.06), transparent 45%),
+      var(--bg);
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+  h1 {
+    font-family: var(--font-mono);
+    font-size: 19px; margin: 0; color: var(--neon); letter-spacing: .01em;
+  }
+  h1 .caret { display: inline-block; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 26px; }
+  section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 18px 20px; margin-bottom: 18px;
+    box-shadow: 0 0 0 1px rgba(16,221,143,.02), 0 12px 30px rgba(0,0,0,.4);
+  }
+  h2 {
+    font-family: var(--font-mono);
+    font-size: 11.5px; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--neon-dim); margin: 0 0 14px; font-weight: 700;
+  }
+  h2::before { content: "// "; color: var(--border-bright); }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; white-space: nowrap; }
-  th { color: #666; font-weight: 600; }
-  td.mark-yes { color: #1a7a1a; font-weight: 600; }
-  td.mark-no { color: #ccc; }
-  .filter-row { margin-bottom: 8px; }
-  .filter-row input { padding: 4px 8px; font-size: 13px; width: 220px; }
-  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  .controls > * { margin: 0; }
-  select, button { font-size: 13px; padding: 5px 8px; }
-  button.run { background: #1a1a1a; color: #fff; border: none; border-radius: 5px; padding: 6px 16px; cursor: pointer; }
-  button.run:hover { background: #333; }
-  button.run:disabled { background: #999; cursor: not-allowed; }
-  label.chk { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
-  #log { background: #111; color: #d6d6d6; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; padding: 12px; border-radius: 6px; height: 340px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
-  #log .cmd { color: #7ce07c; }
-  #log .exit-ok { color: #7ce07c; }
-  #log .exit-bad { color: #ff8080; }
-  .hint { color: #888; font-size: 12px; margin-top: 6px; }
-  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; background: #eee; color: #555; margin-left: 6px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th {
+    font-family: var(--font-mono);
+    color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; position: sticky; top: 0; background: var(--bg2);
+  }
+  tbody tr:hover { background: rgba(16, 221, 143, .06); }
+  td.mark-yes { color: var(--neon); font-weight: 700; }
+  td.mark-no { color: #385142; }
+  .table-wrap { max-height: 520px; overflow-y: auto; border-radius: 6px; border: 1px solid var(--border); }
+  .filter-row { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; }
+  .filter-row input {
+    padding: 7px 10px; font-size: 12.5px; width: 280px; border: 1px solid var(--border);
+    border-radius: 5px; background: var(--bg2); color: var(--ink); font-family: inherit;
+  }
+  .filter-row input:focus { outline: none; border-color: var(--neon-dim); box-shadow: 0 0 0 3px var(--neon-glow); }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+  select {
+    font-size: 12.5px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg2); color: var(--ink); font-family: inherit;
+  }
+  .area-picker { position: relative; }
+  .area-picker input {
+    font-size: 12.5px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg2); width: 280px; color: var(--ink); font-family: inherit;
+  }
+  .area-picker input:focus { outline: none; border-color: var(--neon-dim); box-shadow: 0 0 0 3px var(--neon-glow); }
+  .suggestions {
+    position: absolute; top: 100%; left: 0; margin-top: 4px; width: 340px; max-height: 260px;
+    overflow-y: auto; background: var(--bg2); border: 1px solid var(--border-bright); border-radius: 6px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.6), 0 0 20px rgba(0,230,154,.08); z-index: 10; display: none;
+  }
+  .suggestions.open { display: block; }
+  .suggestions div { padding: 7px 12px; font-size: 12.5px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .suggestions div:hover, .suggestions div.active { background: rgba(0, 230, 154, .1); color: var(--neon); }
+  .suggestions .type-tag { color: var(--muted); font-size: 11px; }
+  .suggestions .none { color: var(--muted); font-style: italic; cursor: default; }
+  button.run {
+    background: var(--neon); color: #04140d; border: none; border-radius: 6px;
+    padding: 8px 22px; cursor: pointer; font-size: 13px; font-weight: 700;
+    font-family: var(--font-ui); letter-spacing: .01em;
+    box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+  button.run:hover { background: #33f2b5; }
+  button.run:disabled { background: #2b4238; color: #6f9382; box-shadow: none; cursor: not-allowed; }
+  label.chk { font-size: 13px; display: inline-flex; align-items: center; gap: 5px; color: var(--ink); }
+  label.chk input { accent-color: var(--neon); }
+  #log {
+    background: #04100b; color: var(--ink); font-family: var(--font-mono);
+    font-size: 12.5px; line-height: 1.5; padding: 14px; border-radius: 8px; height: 340px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-word; border: 1px solid var(--border);
+  }
+  #log .cmd { color: var(--neon); font-weight: 600; }
+  #log .exit-bad { color: var(--red); }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+  .cmd-preview {
+    margin-top: 12px; padding: 9px 12px; border: 1px dashed var(--border-bright);
+    border-radius: 5px; background: var(--bg2); color: var(--neon-dim);
+    font-size: 12.5px; white-space: pre-wrap; word-break: break-word;
+  }
+  .cmd-preview.pending { color: var(--muted); font-style: italic; }
+  .cmd-preview.err { color: var(--red); border-color: var(--red); }
+  .badge {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 3px;
+    background: rgba(0,230,154,.1); color: var(--neon); margin-left: 8px; font-weight: 600;
+    border: 1px solid var(--border-bright);
+  }
 </style>
 </head>
 <body>
 
-<h1>Libby Control Centre</h1>
+<header>
+  <h1>&gt; libby control centre<span class="caret">_</span></h1>
+</header>
 <div class="sub">Every action below runs a real local command — the exact command is always shown in the log before it executes.</div>
 
 <section>
   <h2>Run an action</h2>
   <div class="controls">
-    <select id="actionSelect"></select>
-    <select id="areaSelect"></select>
+    <div>
+      <select id="actionSelect"></select>
+    </div>
+    <div class="area-picker" id="areaPicker">
+      <input id="areaInput" placeholder="Search all 650 constituencies + wards..." autocomplete="off">
+      <div class="suggestions" id="areaSuggestions"></div>
+    </div>
     <span id="paramBox"></span>
     <button class="run" id="runBtn">Run</button>
   </div>
   <div class="hint" id="actionHint"></div>
+  <div id="cmdPreview" class="cmd-preview">$ …</div>
 </section>
 
 <section>
@@ -55,21 +152,27 @@
 
 <section>
   <h2>Status <span class="badge" id="areaCount"></span></h2>
-  <div class="filter-row"><input id="filterBox" placeholder="filter areas..."></div>
-  <table id="statusTable">
-    <thead>
-      <tr>
-        <th>Area</th><th>Type</th><th>Generated</th><th>Pushed</th>
-        <th>Scraped</th><th>About</th><th>Processed</th><th>Staged</th><th>Promoted</th>
-      </tr>
-    </thead>
-    <tbody id="statusBody"></tbody>
-  </table>
+  <div class="filter-row">
+    <input id="filterBox" placeholder="Search all constituencies + wards...">
+    <label class="chk"><input type="checkbox" id="showAllToggle"> show all (incl. untouched)</label>
+  </div>
+  <div class="table-wrap">
+    <table id="statusTable">
+      <thead>
+        <tr>
+          <th>Area</th><th>Type</th><th>Generated</th><th>Pushed</th>
+          <th>Scraped</th><th>About</th><th>Processed</th><th>Staged</th><th>Promoted</th>
+        </tr>
+      </thead>
+      <tbody id="statusBody"></tbody>
+    </table>
+  </div>
 </section>
 
 <script>
 let AREAS = [];
 let ACTIONS = [];
+let SELECTED_SLUG = null;
 
 const PARAM_DEFS = {
   prep: [{key: "force", label: "--force"}],
@@ -89,31 +192,30 @@ const PARAM_DEFS = {
 
 function mark(v) { return `<td class="${v ? 'mark-yes' : 'mark-no'}">${v ? '✓' : '–'}</td>`; }
 
+function isTouched(a) {
+  return a.generated || a.pushed || a.scraped || a.about || a.processed || a.staged || a.promoted;
+}
+
 function renderStatus(filterText) {
   const body = document.getElementById("statusBody");
   const f = (filterText || "").toLowerCase();
-  const rows = AREAS.filter(a => a.name.toLowerCase().includes(f) || a.slug.includes(f));
-  document.getElementById("areaCount").textContent = `${rows.length} / ${AREAS.length}`;
-  body.innerHTML = rows.map(a => `
+  const showAll = document.getElementById("showAllToggle").checked;
+
+  let rows = showAll ? AREAS : AREAS.filter(isTouched);
+  if (f) rows = rows.filter(a => a.name.toLowerCase().includes(f) || a.slug.includes(f));
+
+  const touchedTotal = AREAS.filter(isTouched).length;
+  document.getElementById("areaCount").textContent =
+    showAll ? `${rows.length} shown / ${AREAS.length} total` : `${rows.length} shown / ${touchedTotal} touched`;
+
+  const shown = rows.slice(0, 800);
+  body.innerHTML = shown.map(a => `
     <tr>
       <td>${a.name}</td>
       <td>${a.type}</td>
       ${mark(a.generated)}${mark(a.pushed)}${mark(a.scraped)}${mark(a.about)}${mark(a.processed)}${mark(a.staged)}${mark(a.promoted)}
     </tr>
   `).join("");
-}
-
-function renderAreaSelect() {
-  const sel = document.getElementById("areaSelect");
-  const actionId = document.getElementById("actionSelect").value;
-  const action = ACTIONS.find(a => a.id === actionId);
-  if (!action || !action.needs_area) {
-    sel.innerHTML = `<option value="">(no area needed)</option>`;
-    sel.disabled = true;
-    return;
-  }
-  sel.disabled = false;
-  sel.innerHTML = AREAS.map(a => `<option value="${a.slug}">${a.name} (${a.type})</option>`).join("");
 }
 
 function renderActionSelect() {
@@ -127,12 +229,109 @@ function renderActionSelect() {
   ).join("");
 }
 
+function currentAction() {
+  return ACTIONS.find(a => a.id === document.getElementById("actionSelect").value);
+}
+
+function updateAreaPickerVisibility() {
+  const action = currentAction();
+  const picker = document.getElementById("areaPicker");
+  picker.style.display = (action && action.needs_area) ? "" : "none";
+  if (!action || !action.needs_area) {
+    SELECTED_SLUG = null;
+    document.getElementById("areaInput").value = "";
+  }
+}
+
 function renderParamBox() {
   const actionId = document.getElementById("actionSelect").value;
   const defs = PARAM_DEFS[actionId] || [];
   document.getElementById("paramBox").innerHTML = defs.map(p =>
     `<label class="chk"><input type="checkbox" data-param="${p.key}"> ${p.label}</label>`
   ).join(" ");
+  document.querySelectorAll("#paramBox input[type=checkbox]").forEach(cb => {
+    cb.addEventListener("change", updatePreview);
+  });
+}
+
+// Calls the SAME build_command() the real run uses (via /api/preview), so
+// this can never drift from what actually executes — never a client-side
+// guess at the command string.
+let PREVIEW_TOKEN = 0;
+
+async function updatePreview() {
+  const box = document.getElementById("cmdPreview");
+  const action = currentAction();
+  if (!action) { box.textContent = "$ …"; box.className = "cmd-preview"; return; }
+  if (action.needs_area && !SELECTED_SLUG) {
+    box.textContent = "$ (pick an area to preview the command)";
+    box.className = "cmd-preview pending";
+    return;
+  }
+
+  const params = {};
+  document.querySelectorAll("#paramBox input[type=checkbox]").forEach(cb => {
+    params[cb.dataset.param] = cb.checked;
+  });
+
+  const token = ++PREVIEW_TOKEN;
+  box.textContent = "$ …";
+  box.className = "cmd-preview pending";
+  try {
+    const res = await fetch("/api/preview", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action_id: action.id, slug: SELECTED_SLUG, params}),
+    });
+    if (token !== PREVIEW_TOKEN) return; // a newer request has since superseded this one
+    const data = await res.json();
+    if (!res.ok) {
+      box.textContent = `Error: ${data.error}`;
+      box.className = "cmd-preview err";
+    } else {
+      box.textContent = `$ ${data.command}`;
+      box.className = "cmd-preview";
+    }
+  } catch (e) {
+    if (token !== PREVIEW_TOKEN) return;
+    box.textContent = `Preview failed: ${e}`;
+    box.className = "cmd-preview err";
+  }
+}
+
+function renderSuggestions(query) {
+  const box = document.getElementById("areaSuggestions");
+  const q = query.trim().toLowerCase();
+  if (!q) { box.classList.remove("open"); box.innerHTML = ""; return; }
+  const matches = AREAS.filter(a => a.name.toLowerCase().includes(q) || a.slug.includes(q)).slice(0, 20);
+  if (matches.length === 0) {
+    box.innerHTML = `<div class="none">No matches</div>`;
+  } else {
+    box.innerHTML = matches.map(a =>
+      `<div data-slug="${a.slug}"><span>${a.name}</span><span class="type-tag">${a.type}</span></div>`
+    ).join("");
+  }
+  box.classList.add("open");
+}
+
+function initAreaPicker() {
+  const input = document.getElementById("areaInput");
+  const box = document.getElementById("areaSuggestions");
+
+  input.addEventListener("input", () => { SELECTED_SLUG = null; renderSuggestions(input.value); });
+  input.addEventListener("focus", () => { if (input.value) renderSuggestions(input.value); });
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("areaPicker").contains(e.target)) box.classList.remove("open");
+  });
+  box.addEventListener("click", (e) => {
+    const row = e.target.closest("[data-slug]");
+    if (!row) return;
+    const area = AREAS.find(a => a.slug === row.dataset.slug);
+    SELECTED_SLUG = area.slug;
+    input.value = area.name;
+    box.classList.remove("open");
+    updatePreview();
+  });
 }
 
 async function loadStatus() {
@@ -141,9 +340,10 @@ async function loadStatus() {
   AREAS = data.areas;
   ACTIONS = data.actions;
   renderActionSelect();
-  renderAreaSelect();
+  updateAreaPickerVisibility();
   renderParamBox();
   renderStatus(document.getElementById("filterBox").value);
+  updatePreview();
 }
 
 function appendLog(text, cls) {
@@ -157,8 +357,11 @@ function appendLog(text, cls) {
 }
 
 async function runAction() {
-  const actionId = document.getElementById("actionSelect").value;
-  const slug = document.getElementById("areaSelect").disabled ? null : document.getElementById("areaSelect").value;
+  const action = currentAction();
+  if (action && action.needs_area && !SELECTED_SLUG) {
+    appendLog("Pick an area from the search box first.\n", "exit-bad");
+    return;
+  }
   const params = {};
   document.querySelectorAll("#paramBox input[type=checkbox]").forEach(cb => {
     params[cb.dataset.param] = cb.checked;
@@ -173,7 +376,7 @@ async function runAction() {
     const res = await fetch("/api/run", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({action_id: actionId, slug, params}),
+      body: JSON.stringify({action_id: action.id, slug: SELECTED_SLUG, params}),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -194,7 +397,6 @@ async function runAction() {
         appendLog(text);
       }
     }
-    appendLog("", "exit-ok");
   } catch (e) {
     appendLog(`Request failed: ${e}\n`, "exit-bad");
   } finally {
@@ -203,10 +405,11 @@ async function runAction() {
   }
 }
 
-document.getElementById("actionSelect").addEventListener("change", () => { renderAreaSelect(); renderParamBox(); });
+document.getElementById("actionSelect").addEventListener("change", () => { updateAreaPickerVisibility(); renderParamBox(); updatePreview(); });
 document.getElementById("runBtn").addEventListener("click", runAction);
 document.getElementById("filterBox").addEventListener("input", e => renderStatus(e.target.value));
-
+document.getElementById("showAllToggle").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
+initAreaPicker();
 loadStatus();
 </script>
 </body>

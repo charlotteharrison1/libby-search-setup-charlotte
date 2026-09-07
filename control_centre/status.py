@@ -72,23 +72,33 @@ def build_status_table() -> list[dict]:
 
     # slug -> row. "type" constituency/ward; "name" the best display name
     # found so far (prefer a real PCON24NM or a name pulled from an actual
-    # output file over a prettified slug guess).
+    # output file over a prettified slug guess). Type is fixed at first
+    # creation (setdefault) and never overwritten by a later call — every
+    # real constituency is seeded up front below, precisely so a
+    # differently-typed file that happens to compute a colliding slug can't
+    # silently relabel it.
     rows: dict[str, dict] = {}
 
     def get(slug: str, type_: str) -> dict:
-        row = rows.setdefault(slug, {
+        return rows.setdefault(slug, {
             "slug": slug, "name": slug.replace("_", " ").title(), "type": type_,
             "generated": False, "pushed": False, "scraped": False,
             "about": False, "processed": False, "staged": False, "promoted": False,
         })
-        if type_ == "constituency":
-            row["type"] = "constituency"
-        return row
 
     def prefer_name(row: dict, name: str) -> None:
         # A real PCON24NM, or any name pulled from an actual file (not a
         # prettified-slug guess), is always better than what's there.
         row["name"] = name
+
+    # Seed every one of the ~650 real constituencies up front, all-false —
+    # so the dropdown/table are exhaustive and searchable even for areas
+    # you've never touched, not just ones with local file evidence. Wards
+    # have no equivalent complete reference in this repo (only the ones
+    # you've generated for), so they stay "whatever's been touched".
+    for slug, name in pcon_names.items():
+        row = get(slug, "constituency")
+        prefer_name(row, name)
 
     # constituencies: generated
     for f in SEARCH_TARGETS_DIR.glob("*_search_targets.csv"):

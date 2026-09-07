@@ -22,10 +22,23 @@ About-scraped / processed / staged to `Clacton-etc/inputs/` / promoted to
 running the pipeline (with `--context`/`--about`/`--stop-before-ai-assessment`
 checkboxes), and the four remote `libby` scripts. It does not reimplement any
 pipeline logic — every action shells out to the exact script/command you'd
-type yourself (see `control_centre/actions.py`), and **the literal command is
-always shown in the log, before and while it runs** — nothing happens that
-isn't visible. Local only (binds to `127.0.0.1`); every action is one of a
-fixed, known set, never a free-form shell box.
+type yourself (see `control_centre/actions.py`).
+
+- **The area picker is exhaustive and searchable** — all ~650 constituencies
+  (from `uk/data/reference/constituencies_2024.csv`) plus every ward you've
+  generated for, not just ones you've already touched, so you can start a
+  brand new constituency from the dashboard too. Wards have no equivalent
+  complete reference in this repo, so only ones you've already generated
+  show up.
+- **The status table defaults to areas you've actually worked on**, with a
+  "show all" toggle to reveal the full exhaustive list — untouched
+  constituencies aren't hidden, just out of the way until you ask.
+- **The command preview updates live** as you pick an action/area/flags,
+  before you click Run — not just once a run starts. It calls the same
+  `build_command()` a real run uses (via `/api/preview`), so the preview can
+  never drift from what actually executes.
+- Local only (binds to `127.0.0.1`); every action is one of a fixed, known
+  set, never a free-form shell box.
 
 The "Pushed" column is only as good as `.push_manifest`, which only
 `batch_pipeline.sh prep` writes to — a push done via plain `sync_scrape.sh
