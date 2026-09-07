@@ -126,21 +126,19 @@ def _build_pick_next_about_target(row, params):
 
 
 def _build_run_remote_scrape(row, params):
-    # Replaces the manual `ssh libby` -> set_scrape_target.sh -> script.py
-    # -> press Enter routine with one command. script.py's login prompt
-    # only needs a keypress (the profile on libby is already authenticated
-    # — no real credentials involved), which server.py supplies by piping a
-    # newline into this command's stdin (see ACTIONS' send_enter flag) —
-    # `ssh host "cmd"` forwards local stdin to the remote command by
-    # default, so this reaches script.py's input() same as a real keypress
-    # would. clacton.json is the fixed remote params file set_scrape_target.sh
-    # already points at the right master_file_name/output_directory for.
-    force_flag = " --force" if params.get("force") else ""
-    remote_cmd = (
-        f"cd {REMOTE_BASE} && "
-        f"./set_scrape_target.sh{force_flag} {row['slug']} && "
-        f"python3 script.py --params clacton.json"
-    )
+    # Replaces the manual `ssh libby` -> script.py -> press Enter routine.
+    # Deliberately does NOT set the scrape target itself — that's a
+    # separate decision (set_scrape_target / pick_next_scrape_target,
+    # already their own actions) from "run whatever's currently
+    # configured", which is what you actually do most of the time (e.g.
+    # resuming after script.py's own overnight pause, with the target
+    # unchanged from before). script.py's login prompt only needs a
+    # keypress (the profile on libby is already authenticated — no real
+    # credentials involved), which server.py supplies by piping a newline
+    # into this command's stdin (see ACTIONS' send_enter flag) — `ssh host
+    # "cmd"` forwards local stdin to the remote command by default, so this
+    # reaches script.py's input() same as a real keypress would.
+    remote_cmd = f"cd {REMOTE_BASE} && python3 script.py --params clacton.json"
     return _ssh(remote_cmd)
 
 
@@ -160,7 +158,7 @@ ACTIONS = {
     "pick_next_scrape_target": ("Pick next scrape target",       "Remote",  False, _build_pick_next_scrape_target, False),
     "set_about_target":        ("Set About-scrape target",       "Remote",  True,  _build_set_about_target,      False),
     "pick_next_about_target":  ("Pick next About-scrape target", "Remote",  False, _build_pick_next_about_target,  False),
-    "run_remote_scrape":       ("Run remote scrape (set target + script.py)", "Remote", True, _build_run_remote_scrape, True),
+    "run_remote_scrape":       ("Run remote scrape (script.py, current target)", "Remote", False, _build_run_remote_scrape, True),
 }
 
 
