@@ -234,6 +234,7 @@ const PARAM_DEFS = {
     {key: "stop_before_ai_assessment", label: "--stop-before-ai-assessment"},
   ],
   set_scrape_target: [{key: "force", label: "--force"}],
+  view_scrape_target: [],
   pick_next_scrape_target: [{key: "dry_run", label: "--dry-run"}],
   set_about_target: [{key: "force", label: "--force"}],
   pick_next_about_target: [{key: "dry_run", label: "--dry-run"}],
@@ -276,6 +277,7 @@ function pickNext() {
   document.getElementById("actionSelect").value = "prep";
   BULK_NAMES = [];
   updateAreaPickerVisibility();
+  updatePickButtonsVisibility();
   renderParamBox();
   SELECTED_SLUG = candidates[0].slug;
   document.getElementById("areaInput").value = candidates[0].name;
@@ -293,6 +295,7 @@ function pick5() {
   BULK_NAMES = candidates.map(a => a.name);
   SELECTED_SLUG = null;
   updateAreaPickerVisibility();
+  updatePickButtonsVisibility();
   renderParamBox();
   renderBulkList();
   updatePreview();
@@ -401,6 +404,16 @@ function updateAreaPickerVisibility() {
     SELECTED_SLUG = null;
     document.getElementById("areaInput").value = "";
   }
+}
+
+// Pick next/Pick 5 only make sense while queuing up single-area "prep" runs
+// — hidden for every other action (including prep_bulk itself, once a pick
+// has already been made) so they don't imply they apply more broadly.
+function updatePickButtonsVisibility() {
+  const action = currentAction();
+  const show = action && action.id === "prep";
+  document.getElementById("pickNextBtn").style.display = show ? "" : "none";
+  document.getElementById("pick5Btn").style.display = show ? "" : "none";
 }
 
 function renderParamBox() {
@@ -514,6 +527,7 @@ async function loadStatus() {
   ACTIONS = data.actions;
   renderActionSelect();
   updateAreaPickerVisibility();
+  updatePickButtonsVisibility();
   renderParamBox();
   renderBulkList();
   renderStatus(document.getElementById("filterBox").value);
@@ -617,6 +631,7 @@ async function killCurrent() {
 document.getElementById("actionSelect").addEventListener("change", () => {
   if (currentAction() && currentAction().id !== "prep_bulk") BULK_NAMES = [];
   updateAreaPickerVisibility();
+  updatePickButtonsVisibility();
   renderParamBox();
   renderBulkList();
   updatePreview();

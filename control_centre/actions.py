@@ -22,8 +22,20 @@ class UnknownAction(Exception):
     pass
 
 
-def _ssh(remote_command: str) -> list[str]:
-    return ["ssh", DEVICE, remote_command]
+def _ssh(remote_command: str, force_tty: bool = False) -> list[str]:
+    # force_tty (-tt): a bare `ssh host "cmd"` never allocates a remote
+    # pseudo-terminal, unlike a real interactive `ssh host` session. That
+    # turned out to matter for run_remote_scrape specifically — script.py
+    # launches Chrome successfully in a real interactive session but not
+    # through a bare non-interactive one, and -tt is the standard fix for
+    # this exact class of "remote GUI automation over SSH" problem. -tt
+    # (not a single -t) forces allocation even though the LOCAL side (this
+    # Flask subprocess) has no real terminal of its own to request one from.
+    cmd = ["ssh"]
+    if force_tty:
+        cmd.append("-tt")
+    cmd += [DEVICE, remote_command]
+    return cmd
 
 
 # Each builder takes (row: dict from status.build_status_table, params: dict
@@ -103,6 +115,14 @@ def _build_set_scrape_target(row, params):
     return _ssh(remote_cmd)
 
 
+def _build_view_scrape_target(row, params):
+    # Read-only: just prints clacton.json so you can see what's currently
+    # configured (master_file_name / output_directory) without having to
+    # ssh in by hand to check.
+    remote_cmd = f"cd {REMOTE_BASE} && cat clacton.json"
+    return _ssh(remote_cmd)
+
+
 def _build_pick_next_scrape_target(row, params):
     remote_cmd = f"cd {REMOTE_BASE} && ./pick_next_scrape_target.sh"
     if params.get("dry_run"):
@@ -134,19 +154,27 @@ def _build_run_remote_scrape(row, params):
     # resuming after script.py's own overnight pause, with the target
     # unchanged from before).
     #
-    # script.py's login prompt needs a keypress before it proceeds (the
-    # profile on libby is already authenticated — no real credentials
-    # involved) — but auto-supplying it immediately on process start turned
-    # out to be unreliable in practice (a "user data directory already in
-    # use" SessionNotCreatedException — plausibly a race with Chrome still
-    # finishing its own startup, or a stale profile lock from an earlier
-    # interrupted run). Rather than guess at a delay, this stays fully
-    # interactive: the process's stdin is left open for the whole run (see
-    # server.py's /api/stdin) so you can type Enter yourself once you can
-    # actually see the browser's come up in the log — matching what a real
-    # SSH session gives you, just from this page instead.
-    remote_cmd = f"cd {REMOTE_BASE} && python3 script.py --params clacton.json"
-    return _ssh(remote_cmd)
+    # Root cause of the SessionNotCreatedException, confirmed by hand:
+    # settings.py hardcodes headless=False, so Chrome always opens a real
+    # window and needs an actual X display — a plain ssh session (even
+    # with a pty) has no DISPLAY at all. There's a persistent Xtigervnc
+    # session on :2 on this device; DISPLAY=:2 is what a manual run
+    # actually relies on. Confirmed directly: with DISPLAY=:2 set, Chrome
+    # launches and script.py reaches its "Log in manually and press
+    # Enter..." prompt, same as a manual run — no exception.
+    #
+    # force_tty=True is still needed on top of that: -tt allocates a real
+    # pseudo-terminal so the underlying ssh command behaves like a normal
+    # interactive session for the process's stdin, which the login prompt
+    # below waits on.
+    #
+    # script.py's login prompt still needs a keypress once the browser's
+    # up (the profile is already authenticated — no real credentials
+    # involved); the process's stdin is left open for the whole run (see
+    # server.py's /api/stdin) so you can send it yourself once you can see
+    # in the log that it's actually ready, same as a real SSH session.
+    remote_cmd = f"cd {REMOTE_BASE} && DISPLAY=:2 python3 script.py --params clacton.json"
+    return _ssh(remote_cmd, force_tty=True)
 
 
 # id -> (label, category, needs_area, builder)
@@ -160,6 +188,7 @@ ACTIONS = {
     "pull_about":              ("Pull About-scrape",             "Pull",    True,  _build_pull_about),
     "run_pipeline":            ("Run pipeline",                  "Process", True,  _build_run_pipeline),
     "set_scrape_target":       ("Set scrape target",             "Remote",  True,  _build_set_scrape_target),
+    "view_scrape_target":      ("View current scrape target",    "Remote",  False, _build_view_scrape_target),
     "pick_next_scrape_target": ("Pick next scrape target",       "Remote",  False, _build_pick_next_scrape_target),
     "set_about_target":        ("Set About-scrape target",       "Remote",  True,  _build_set_about_target),
     "pick_next_about_target":  ("Pick next About-scrape target", "Remote",  False, _build_pick_next_about_target),
