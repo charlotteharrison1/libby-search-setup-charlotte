@@ -56,7 +56,15 @@ import pandas as pd
 from libby_core import assessment, descriptions
 from uk import about_context, data_loading, local_about_scraper, parsing, ward_geodata
 from uk.generate_search import slugify
-from uk.pipeline import _apply_ai_verdict, _dropped_rows, _kept_rows, _upsert_group_log
+from uk.pipeline import (
+    _apply_ai_verdict,
+    _dropped_rows,
+    _kept_rows,
+    _load_overrides_by_area,
+    _missing_override_rows,
+    _recovered_ledger_rows,
+    _upsert_group_log,
+)
 from uk.settings import (
     ABOUT_PAGES_DIR,
     CLACTON_INPUTS_DIR,
@@ -74,6 +82,16 @@ AREA_KIND = "UK electoral ward"
 # shared, upserted log (see uk.pipeline._upsert_group_log).
 def _ward_area_name(ward_name: str, local_authority: str) -> str:
     return f"{ward_name} ({local_authority})" if local_authority else ward_name
+
+
+def _parse_ward_area_name(area_name: str) -> tuple[str, str]:
+    """Inverse of _ward_area_name — splits "<ward name> (<local authority>)"
+    back into (ward_name, local_authority), or (area_name, "") if there's no
+    trailing parenthetical. Used by uk/recover_group.py, which only has the
+    formatted group_log.csv area_name to work from."""
+    m = re.match(r"^(.*) \(([^)]*)\)$", area_name)
+    return (m.group(1), m.group(2)) if m else (area_name, "")
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -200,6 +218,34 @@ def _aggregate_ward_groups(df_exploded: pd.DataFrame, ward_id: str) -> pd.DataFr
     return agg
 
 
+def reconstruct_ward_candidates(
+    ward_name: str, local_authority: str, input_path: Path | None = None,
+) -> pd.DataFrame:
+    """Rebuild the full pre-filter candidate pool for one ward, straight
+    from its own scraped file — no LLM calls, no re-scraping, read-only.
+    Used by uk/recover_group.py — see uk.pipeline.reconstruct_constituency_
+    candidates's identical rationale.
+
+    Raises FileNotFoundError if there's no scraped file for this ward."""
+    if input_path is None:
+        input_path = WARD_SCRAPED_DIR / f"{slugify(ward_name)}_search_targets.csv"
+    if not input_path.exists():
+        raise FileNotFoundError(f"No scraped file for ward {ward_name!r} at {input_path}")
+
+    df_exploded = data_loading.load_new_scrape(input_path)
+    df_exploded = _parse_details_on_exploded(df_exploded)
+
+    split = df_exploded["county"].apply(ward_geodata.split_county)
+    df_exploded["ward_name"] = split.apply(lambda t: t[0])
+    df_exploded["local_authority"] = split.apply(lambda t: t[1])
+    df_exploded["ward_id"] = df_exploded.apply(
+        lambda r: slugify(f"{r['ward_name']}_{r['local_authority']}"), axis=1
+    )
+
+    ward_id = slugify(f"{ward_name}_{local_authority}")
+    return _aggregate_ward_groups(df_exploded, ward_id)
+
+
 def _log_targeting_breakdown(ward_name: str, final: pd.DataFrame) -> pd.DataFrame:
     """Log a per-type/per-source count rollup, and return a PER-GROUP table
     (one row per surviving group, with the target types/sources that found it
@@ -248,12 +294,9 @@ def _update_targeting_master(ward_name: str, local_authority: str, breakdown: pd
     })
 
     if master_path.exists():
-        # latin-1, not utf-8: master_path is written with errors="surrogatepass"
-        # (group names can carry unpaired surrogates from mangled scraped
-        # emoji), which produces byte sequences strict utf-8 decoding
-        # rejects — same reasoning as uk.pipeline's output.csv/groups_*.csv
-        # reads.
-        master = pd.read_csv(master_path, dtype=str, encoding="latin-1").fillna("")
+        # encoding_errors="surrogatepass" matches how this file is written
+        # (see uk.settings's note on why not encoding="latin-1").
+        master = pd.read_csv(master_path, dtype=str, encoding="utf-8", encoding_errors="surrogatepass").fillna("")
         master = master[
             ~((master["ward"] == ward_name) & (master["local_authority"] == local_authority))
         ]
@@ -287,6 +330,7 @@ def _process_file(
     min_posts_a_month: float,
     force_descriptions: bool,
     about_lookup: dict[str, str],
+    overrides_by_ward: dict[str, set[str]],
     use_about: bool = False,
     about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
 ) -> list[pd.DataFrame]:
@@ -484,6 +528,13 @@ def _process_file(
         )
 
         ledger += _kept_rows(final, "ward", area_name, about_reassessed_ids)
+
+        recovered = _missing_override_rows(final, agg, overrides_by_ward.get(area_name, set()))
+        if not recovered.empty:
+            logger.info("  Re-applied %d manually-recovered group(s) for %s", len(recovered), area_name)
+            ledger += _recovered_ledger_rows(recovered, "ward", area_name)
+            final = pd.concat([final, recovered], ignore_index=True)
+
         _upsert_group_log("ward", area_name, ledger)
 
         final = final.sort_values(by=["members", "posts_a_month"], ascending=False, na_position="last")
@@ -550,6 +601,11 @@ def run(
     # constituency or ward) is preferred over one file per ward.
     about_lookup = about_context.load_global_about_context(ABOUT_PAGES_DIR) if use_context else {}
 
+    # Manually-recovered groups (see uk/recover_group.py) — re-applied per
+    # ward at the end of its processing, so a real reprocess doesn't
+    # silently drop something you deliberately overrode.
+    overrides_by_ward = _load_overrides_by_area("ward")
+
     # No per-ward resumability cache here (every run reprocesses everything
     # fresh — see module docstring); each ward's group_log.csv rows are
     # upserted individually as it finishes (see _process_file), so there's
@@ -558,7 +614,7 @@ def run(
     for path in input_paths:
         all_final.extend(_process_file(
             Path(path), stop_before_ai_assessment, min_members, min_posts_a_month,
-            force_descriptions, about_lookup, use_about, about_limit,
+            force_descriptions, about_lookup, overrides_by_ward, use_about, about_limit,
         ))
 
     if stop_before_ai_assessment or not all_final:

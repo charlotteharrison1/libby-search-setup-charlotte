@@ -265,7 +265,7 @@ def write_local_about(df: pd.DataFrame, slug: str, out_dir: Path = ABOUT_PAGES_D
     not something to silently redirect via module-global monkeypatching)."""
     out_path = out_dir / f"{slug}_about_local.csv"
     if out_path.exists():
-        existing = pd.read_csv(out_path, dtype=str, encoding="latin-1")
+        existing = pd.read_csv(out_path, dtype=str, encoding="utf-8", encoding_errors="surrogatepass")
         df = pd.concat([existing, df], ignore_index=True).drop_duplicates(subset=["url"], keep="last")
     df.to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
     logger.info("Wrote %d row(s) → %s", len(df), out_path)

@@ -53,7 +53,7 @@ def _area_name_from_path(path: Path) -> str:
 
 def _unsure_rows(path: Path) -> pd.DataFrame:
     try:
-        df = pd.read_csv(path, encoding="latin-1", on_bad_lines="skip")
+        df = pd.read_csv(path, encoding="utf-8", encoding_errors="surrogatepass", on_bad_lines="skip")
     except Exception as e:
         logger.warning("Could not read %s (%s) — skipping", path, e)
         return pd.DataFrame()

@@ -5,7 +5,26 @@ The shared OpenRouter API key comes from ``libby_core.settings`` (root .env).
 
 from pathlib import Path
 
+import pandas as pd
+
 from libby_core.settings import OPEN_ROUTER_KEY  # noqa: F401  (re-exported for convenience)
+
+# Group/area names scraped from Facebook occasionally contain unpaired
+# UTF-16 surrogates (mangled emoji) — several files in this codebase are
+# written with encoding="utf-8", errors="surrogatepass" to preserve them
+# rather than crash. Reading such a file back needs the matching
+# encoding_errors="surrogatepass" — but pandas 3.x's default PyArrow-backed
+# string dtype cannot represent a lone surrogate at all and raises
+# UnicodeEncodeError on it, which is why every surrogatepass read in this
+# codebase used encoding="latin-1" as a non-raising workaround instead.
+# That "worked" (never raised) but silently mojibakes every ordinary
+# multi-byte UTF-8 character (e.g. any em dash in group_log.csv's reason
+# text) on every read+rewrite cycle — confirmed actively corrupting
+# uk/output/group_log.csv. Disabling PyArrow-backed strings here, once, at
+# import time (uk.settings is imported by everything that touches these
+# files) is what actually makes a correct, non-lossy
+# encoding="utf-8"/encoding_errors="surrogatepass" read possible.
+pd.set_option("future.infer_string", False)
 
 _THIS_DIR = Path(__file__).resolve().parent
 
@@ -62,6 +81,12 @@ WARD_DESCRIPTIONS_PATH = DATA_DIR / "ward_descriptions.csv"
 # replaced wholesale on reprocessing, never duplicated or left stale.
 GROUP_LOG_PATH = OUTPUT_DIR / "group_log.csv"
 
+# Durable record of manually-recovered groups (see uk/recover_group.py) —
+# checked once per run at the top of run(), the same way the About-context
+# cache is, and re-applied per area at the end of that area's processing so
+# a real future reprocess doesn't silently drop a recovered group again.
+GROUP_OVERRIDES_PATH = OUTPUT_DIR / "group_overrides.csv"
+
 # uk.queue_unsure_for_about's output: a groups_file-shaped CSV of every
 # still-Unsure, not-yet-About-scraped group across every groups_*.csv found,
 # ready to hand to libby_download's scrape_group_about.py. Regenerated fresh
@@ -91,3 +116,10 @@ LIBBY_DOWNLOAD_PATH: Path = Path(
 CLACTON_INPUTS_DIR: Path = Path(
     os.environ.get("CLACTON_INPUTS_DIR", "/Users/charlotte/vs_code/Clacton-etc/inputs")
 ).expanduser()
+
+# Where a staged result graduates to once someone deliberately promotes it
+# (still a manual step — see batch_pipeline.sh's docstring) — what
+# data_collection.py (billable) actually reads. Flat for both area types
+# (mixes constituency + ward groups_*.csv together), matching
+# control_centre/status.py's existing "promoted" scan.
+CLACTON_GROUPS_DIR: Path = CLACTON_INPUTS_DIR.parent / "groups"

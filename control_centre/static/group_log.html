@@ -72,6 +72,14 @@
     font-family: var(--font-ui);
   }
   .btn-secondary:hover { border-color: var(--neon); color: var(--neon); background: rgba(16,221,143,.06); }
+  td.action-cell { white-space: nowrap; text-align: right; }
+  .recover-btn {
+    background: transparent; color: var(--amber); border: 1px solid var(--amber);
+    border-radius: 5px; padding: 3px 10px; cursor: pointer; font-size: 11.5px; font-weight: 700;
+    font-family: var(--font-ui);
+  }
+  .recover-btn:hover:not(:disabled) { background: rgba(255,180,84,.12); }
+  .recover-btn:disabled { opacity: .5; cursor: not-allowed; }
   .area-picker { position: relative; }
   .area-picker input { width: 260px; padding-right: 30px; }
   .area-picker::after {
@@ -152,11 +160,12 @@
 <div class="table-wrap">
   <table id="groupLogTable">
     <colgroup>
-      <col style="width: 22%">
-      <col style="width: 11%">
-      <col style="width: 11%">
-      <col style="width: 18%">
-      <col style="width: 38%">
+      <col style="width: 20%">
+      <col style="width: 10%">
+      <col style="width: 10%">
+      <col style="width: 16%">
+      <col style="width: 34%">
+      <col style="width: 10%">
     </colgroup>
     <thead>
       <tr id="groupLogHeadRow"></tr>
@@ -227,8 +236,8 @@ function renderGroupLogHead() {
     const sorted = c.key === GL_SORT_KEY;
     const arrow = sorted ? `<span class="arrow">${GL_SORT_DIR === 1 ? "▲" : "▼"}</span>` : "";
     return `<th data-key="${c.key}" class="${sorted ? 'sorted' : ''}">${c.label}${arrow}</th>`;
-  }).join("");
-  row.querySelectorAll("th").forEach(th => th.addEventListener("click", () => glSetSort(th.dataset.key)));
+  }).join("") + `<th></th>`; // action column — not sortable
+  row.querySelectorAll("th[data-key]").forEach(th => th.addEventListener("click", () => glSetSort(th.dataset.key)));
   const col = GROUP_LOG_COLUMNS.find(c => c.key === GL_SORT_KEY);
   document.getElementById("groupLogSortHint").textContent =
     `sorted by ${col.label} ${GL_SORT_DIR === 1 ? "(asc)" : "(desc)"} — click a column header to sort`;
@@ -261,6 +270,11 @@ function renderGroupLog() {
     const style = OUTCOME_STYLE[r.outcome];
     // title= on the truncated cells so the full text is still reachable
     // (hover) even when ellipsis cuts it off — group/area names can run long.
+    // "Recover" only makes sense for a rejected group — an already-accepted
+    // row (including one recovered earlier) just shows a dash instead.
+    const action = r.accepted === "Y"
+      ? `<span class="hint">—</span>`
+      : `<button class="recover-btn" data-url="${escapeHtml(r.group_url)}" data-area-type="${escapeHtml(r.area_type)}" data-area-name="${escapeHtml(r.area_name)}" type="button">Recover</button>`;
     return `
     <tr class="${style.rowClass}">
       <td title="${escapeHtml(r.group)}">${escapeHtml(r.group)}</td>
@@ -268,10 +282,46 @@ function renderGroupLog() {
       <td title="${escapeHtml(r.area_type)}">${escapeHtml(r.area_type)}</td>
       <td title="${escapeHtml(r.area_name)}">${escapeHtml(r.area_name)}</td>
       <td class="reason-cell">${escapeHtml(r.reason)}</td>
+      <td class="action-cell">${action}</td>
     </tr>
   `;
   }).join("");
 }
+
+async function recoverGroup(button) {
+  const {url, areaType, areaName} = button.dataset;
+  const note = prompt(`Recover this group for ${areaName}?\n\nOptional note (or leave blank):`);
+  if (note === null) return; // Cancel — abort, don't call the API at all
+
+  button.disabled = true;
+  button.textContent = "Recovering…";
+  try {
+    const res = await fetch("/api/recover_group", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({group_url: url, area_type: areaType, area_name: areaName, note}),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert(`Recovery failed: ${data.message}`);
+      button.disabled = false;
+      button.textContent = "Recover";
+      return;
+    }
+    // Re-fetch rather than patch the row in place — the source of truth
+    // (group_log.csv) just changed on disk and this keeps the table honest.
+    await loadGroupLog();
+  } catch (e) {
+    alert(`Recovery request failed: ${e}`);
+    button.disabled = false;
+    button.textContent = "Recover";
+  }
+}
+
+document.getElementById("groupLogBody").addEventListener("click", (e) => {
+  const btn = e.target.closest(".recover-btn");
+  if (btn) recoverGroup(btn);
+});
 
 // ── Area picker — same browse/search pattern as the main control centre's
 // area picker, but populated from areas that actually have log rows

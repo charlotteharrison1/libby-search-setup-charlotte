@@ -31,12 +31,14 @@ from uk.settings import (
     DENSITIES_PATH,
     GEOJSON_PATH,
     GROUP_LOG_PATH,
+    GROUP_OVERRIDES_PATH,
     INTERMEDIATE_DIR,
     NEW_SCRAPE_PATH,
     OUTPUT_DIR,
     PCON_MAPPING_PATH,
     PREVIOUS_SCRAPE_PATH,
     REDO_GROUPS_PATH,
+    SCRAPED_DIR,
 )
 
 # Area metadata used by the shared description + assessment engines.
@@ -187,6 +189,58 @@ def _combine(
     return combined
 
 
+def reconstruct_constituency_candidates(pcon24nm: str, input_path: Path | None = None) -> pd.DataFrame:
+    """Rebuild the full pre-filter candidate pool for one constituency,
+    straight from its own scraped file — no LLM calls, no re-scraping,
+    read-only (never touches NEW_SCRAPE_PATH/redo_groups.csv the way a real
+    run() does). Used by uk/recover_group.py to pull a specific rejected
+    group's full row back out after the fact — nothing this granular
+    survives past a normal run (group_log.csv is deliberately lean; see its
+    own module comment), so recovery re-derives it instead of storing it.
+
+    Raises FileNotFoundError if there's no scraped file for this
+    constituency, or ValueError if `pcon24nm` isn't a real constituency
+    name — both meant to surface as a clear CLI error, not a stack trace
+    the caller has to interpret.
+    """
+    if input_path is None:
+        input_path = SCRAPED_DIR / f"{slugify(pcon24nm)}_search_targets.csv"
+    if not input_path.exists():
+        raise FileNotFoundError(f"No scraped file for {pcon24nm!r} at {input_path}")
+
+    df_new_exploded = data_loading.load_new_scrape(input_path)
+    df_new_exploded = _parse_details_on_exploded(df_new_exploded)
+
+    if PCON_MAPPING_PATH.exists():
+        pcon_map_df = data_loading.load_pcon_mapping()
+    else:
+        pcon_map_df = df_new_exploded[["PCON24CD", "PCON24NM"]].drop_duplicates().reset_index(drop=True)
+
+    match = pcon_map_df[pcon_map_df["PCON24NM"] == pcon24nm]
+    if match.empty:
+        raise ValueError(f"Constituency {pcon24nm!r} not found in PCON mapping")
+    pcon_codes = set(match["PCON24CD"].unique())
+
+    new_groups = _aggregate_new_groups(df_new_exploded, pcon_codes)
+    new_groups_c = new_groups[new_groups["PCON24CD"].isin(pcon_codes)].copy()
+
+    geo_available = GEOJSON_PATH.exists() and DENSITIES_PATH.exists() and PREVIOUS_SCRAPE_PATH.exists()
+    if geo_available:
+        addon_groups = geo.compute_geographic_addon(
+            df_previous=data_loading.load_previous_scrape(),
+            df_new_exploded=df_new_exploded,
+            gdf_pcon=data_loading.load_constituency_boundaries(),
+            densities_df=data_loading.load_densities(),
+            constituency_codes=pcon_codes,
+            global_min_add_on=GLOBAL_MIN_ADD_ON,
+            global_max_add_on=GLOBAL_MAX_ADD_ON,
+        )
+    else:
+        addon_groups = pd.DataFrame()
+
+    return _combine(new_groups_c, addon_groups, pcon_map_df).reset_index(drop=True)
+
+
 # ── group log ─────────────────────────────────────────────────────────────
 # One shared ledger for every group ever considered, across both pipelines:
 # was it accepted into a final groups_*.csv, and why (or why not). Replaces
@@ -262,6 +316,81 @@ def _apply_ai_verdict(
         )
     }
     return after, reason_by_row_id
+
+
+def _load_overrides_by_area(area_type: str) -> dict[str, set[str]]:
+    """area_name -> set of manually-recovered group urls (see
+    uk/recover_group.py), for the given area_type. Loaded once per run —
+    same pattern as the About-context cache."""
+    if not GROUP_OVERRIDES_PATH.exists():
+        return {}
+    try:
+        odf = pd.read_csv(GROUP_OVERRIDES_PATH, dtype=str, encoding="utf-8", encoding_errors="surrogatepass")
+    except Exception:
+        logger.warning("Could not read %s — proceeding without recovered-group overrides", GROUP_OVERRIDES_PATH)
+        return {}
+    odf = odf[odf.get("area_type") == area_type]
+    return {name: set(group["group_url"]) for name, group in odf.groupby("area_name")}
+
+
+def _missing_override_rows(
+    final: pd.DataFrame,
+    candidate_pool: pd.DataFrame,
+    override_urls: set[str],
+    pcon24nm: str | None = None,
+) -> pd.DataFrame:
+    """Return the rows for any manually-recovered url (see
+    uk/recover_group.py) in `override_urls` not already present in `final`,
+    pulled back from `candidate_pool` — that area's own full pre-filter
+    candidate set, already in memory from earlier in this same run (see
+    run()/`_process_file`'s new_groups_c/agg) — so a real future reprocess
+    doesn't silently drop a recovered group again.
+
+    Reindexed to `final`'s exact columns first, so a candidate pool's extra
+    columns (e.g. target_types/target_sources) never leak into the written
+    output and corrupt its schema. Deliberately returned separately rather
+    than pre-merged into `final`, so the caller can give these rows their
+    own group_log reason instead of running them through _kept_rows's
+    verdict-based reasoning (which doesn't apply to a manual override).
+
+    `pcon24nm`, when given (constituency callers only), overwrites the
+    recovered row's PCON24NM — needed there because `candidate_pool` might
+    not have it yet at this point. Ward callers must leave this as None:
+    a ward row's PCON24NM is its *parent constituency*'s name, not the
+    ward's own — `candidate_pool` (agg) already carries the correct value
+    through untouched, and overwriting it here would corrupt that field.
+    """
+    if not override_urls:
+        return final.iloc[0:0]
+    missing = override_urls - set(final["url"])
+    if not missing:
+        return final.iloc[0:0]
+    recovered = candidate_pool[candidate_pool["url"].isin(missing)].copy()
+    if recovered.empty:
+        return final.iloc[0:0]
+    recovered = recovered.reindex(columns=final.columns)
+    if pcon24nm is not None:
+        recovered["PCON24NM"] = pcon24nm
+    recovered["first_assessment"] = "Manually recovered"
+    return recovered
+
+
+def _recovered_ledger_rows(recovered: pd.DataFrame, area_type: str, area_name: str) -> list[dict]:
+    """group_log records (accepted="Y", stage="recovered") for rows added
+    by _missing_override_rows — see uk/recover_group.py for how a group
+    gets into group_overrides.csv in the first place."""
+    return [
+        {
+            "group": r.get("name"),
+            "group_url": r.get("url"),
+            "area_type": area_type,
+            "area_name": area_name,
+            "accepted": "Y",
+            "stage": "recovered",
+            "reason": "Manually recovered — see uk/output/group_overrides.csv",
+        }
+        for _, r in recovered.iterrows()
+    ]
 
 
 def _dropped_rows(
@@ -355,10 +484,9 @@ def _upsert_group_log(area_type: str, area_name: str, rows: list[dict]) -> None:
     an area never duplicates or leaves stale entries behind."""
     new_rows = pd.DataFrame(rows, columns=GROUP_LOG_COLUMNS)
     if GROUP_LOG_PATH.exists():
-        # latin-1, not utf-8: see _update_targeting_master's identical note —
-        # group names can carry unpaired surrogates written with
-        # errors="surrogatepass", which strict utf-8 decoding rejects.
-        existing = pd.read_csv(GROUP_LOG_PATH, dtype=str, encoding="latin-1").fillna("")
+        # encoding_errors="surrogatepass" matches how this file is written
+        # (see uk.settings's note on why not encoding="latin-1").
+        existing = pd.read_csv(GROUP_LOG_PATH, dtype=str, encoding="utf-8", encoding_errors="surrogatepass").fillna("")
         existing = existing[
             ~((existing["area_type"] == area_type) & (existing["area_name"] == area_name))
         ]
@@ -438,12 +566,9 @@ def _update_targeting_master(pcon24nm: str, breakdown: pd.DataFrame) -> None:
         rows.loc[addon.values, "sources"] = "geo add on"
 
     if master_path.exists():
-        # latin-1, not utf-8: master_path is written with errors="surrogatepass"
-        # (group names can carry unpaired surrogates from mangled scraped
-        # emoji), which produces byte sequences strict utf-8 decoding
-        # rejects — same reasoning as this module's output.csv/groups_*.csv
-        # reads.
-        master = pd.read_csv(master_path, dtype=str, encoding="latin-1").fillna("")
+        # encoding_errors="surrogatepass" matches how this file is written
+        # (see uk.settings's note on why not encoding="latin-1").
+        master = pd.read_csv(master_path, dtype=str, encoding="utf-8", encoding_errors="surrogatepass").fillna("")
         master = master[master["constituency"] != pcon24nm]
         master = pd.concat([master, rows], ignore_index=True)
     else:
@@ -529,6 +654,11 @@ def run(
     # multi-area run benefit from earlier areas' local scrapes too.
     about_lookup = about_context.load_global_about_context(ABOUT_PAGES_DIR) if use_context else {}
 
+    # Manually-recovered groups (see uk/recover_group.py) — re-applied per
+    # constituency at the end of its processing below, so a real reprocess
+    # doesn't silently drop something you deliberately overrode.
+    overrides_by_constituency = _load_overrides_by_area("constituency")
+
     # PCON mapping — fall back to scrape data if file is missing
     if PCON_MAPPING_PATH.exists():
         pcon_map_df = data_loading.load_pcon_mapping()
@@ -582,7 +712,10 @@ def run(
     logged_constituencies: set[str] = set()
     if GROUP_LOG_PATH.exists():
         try:
-            log_df = pd.read_csv(GROUP_LOG_PATH, usecols=["area_type", "area_name"], dtype=str, encoding="latin-1")
+            log_df = pd.read_csv(
+                GROUP_LOG_PATH, usecols=["area_type", "area_name"], dtype=str,
+                encoding="utf-8", encoding_errors="surrogatepass",
+            )
             logged_constituencies = set(log_df.loc[log_df["area_type"] == "constituency", "area_name"])
         except Exception:
             logger.warning("Could not read %s to check for already-logged constituencies", GROUP_LOG_PATH)
@@ -801,6 +934,15 @@ def run(
         )
 
         ledger += _kept_rows(final_c, "constituency", pcon24nm, about_reassessed_ids)
+
+        recovered = _missing_override_rows(
+            final_c, new_groups_c, overrides_by_constituency.get(pcon24nm, set()), pcon24nm=pcon24nm,
+        )
+        if not recovered.empty:
+            logger.info("  Re-applied %d manually-recovered group(s) for %s", len(recovered), pcon24nm)
+            ledger += _recovered_ledger_rows(recovered, "constituency", pcon24nm)
+            final_c = pd.concat([final_c, recovered], ignore_index=True)
+
         _upsert_group_log("constituency", pcon24nm, ledger)
 
         # about_context (when --context matched something) is prompt input
@@ -843,7 +985,7 @@ def run(
     else:
         parts = []
         for p in intermediate_files:
-            part = pd.read_csv(p, encoding="latin-1", on_bad_lines="skip")
+            part = pd.read_csv(p, encoding="utf-8", encoding_errors="surrogatepass", on_bad_lines="skip")
             parts.append(part)
             # Save a named file per constituency
             if "PCON24NM" in part.columns and not part.empty:

@@ -74,12 +74,50 @@ def api_group_log():
     (not cached) since it changes on every pipeline run."""
     if not GROUP_LOG_PATH.exists():
         return jsonify({"rows": []})
-    # latin-1, not utf-8: written with errors="surrogatepass" (group names
-    # can carry unpaired surrogates from mangled scraped emoji) — same
-    # reasoning as every other read of a surrogatepass-written CSV in this
-    # repo (see uk.pipeline._upsert_group_log's own read of this file).
-    df = pd.read_csv(GROUP_LOG_PATH, dtype=str, encoding="latin-1").fillna("")
+    # encoding_errors="surrogatepass" matches how this file is written
+    # (errors="surrogatepass" — group names can carry unpaired surrogates
+    # from mangled scraped emoji) — see uk.settings's note on why this,
+    # not encoding="latin-1", is the correct way to read it back.
+    df = pd.read_csv(GROUP_LOG_PATH, dtype=str, encoding="utf-8", encoding_errors="surrogatepass").fillna("")
     return jsonify({"rows": df.to_dict(orient="records")})
+
+
+@app.route("/api/recover_group", methods=["POST"])
+def api_recover_group():
+    """Manually recover one rejected group — shells out to
+    uk/recover_group.py (never runs its logic in-process), same "only ever
+    runs a real, known script" rule as every /api/run action. Runs
+    synchronously and waits (no re-scraping/LLM calls involved, so this
+    finishes in a second or two) rather than going through the streaming
+    /api/run machinery, since the group-log page has no command log of its
+    own to stream into."""
+    body = request.get_json(force=True) or {}
+    url = body.get("group_url")
+    area_type = body.get("area_type")
+    area_name = body.get("area_name")
+    note = body.get("note", "")
+    if not url or area_type not in ("constituency", "ward") or not area_name:
+        return jsonify({
+            "ok": False,
+            "message": "group_url, area_type ('constituency' or 'ward'), and area_name are required",
+        }), 400
+
+    cmd = [
+        "python3", "-m", "uk.recover_group",
+        "--url", url, "--area-type", area_type, "--area-name", area_name,
+    ]
+    if note:
+        cmd += ["--note", note]
+
+    try:
+        proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "message": "Recovery timed out after 60s"}), 504
+
+    output = (proc.stdout + proc.stderr).strip()
+    if proc.returncode != 0:
+        return jsonify({"ok": False, "message": output or f"recover_group.py exited {proc.returncode}"}), 400
+    return jsonify({"ok": True, "message": output})
 
 
 def _resolve_command(body: dict) -> tuple[list[str] | None, tuple[dict, int] | None]:

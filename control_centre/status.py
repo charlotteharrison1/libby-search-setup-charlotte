@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from uk.generate_search import slugify
 from uk.settings import (
     ABOUT_PAGES_DIR,
+    CLACTON_GROUPS_DIR,
     CLACTON_INPUTS_DIR,
     OUTPUT_DIR,
     REFERENCE_DIR,
@@ -30,8 +31,6 @@ from uk.settings import (
     WARD_SCRAPED_DIR,
     WARD_SEARCH_TARGETS_DIR,
 )
-
-CLACTON_GROUPS_DIR = CLACTON_INPUTS_DIR.parent / "groups"
 
 PUSH_MANIFEST = SEARCH_TARGETS_DIR / ".push_manifest"
 
