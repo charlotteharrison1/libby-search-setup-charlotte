@@ -49,6 +49,14 @@ def index():
     return send_from_directory(app.static_folder, "index.html")
 
 
+@app.route("/group-log")
+def group_log_page():
+    # A real separate page (own URL, own browser tab) rather than a
+    # same-page view toggle — so it can stay open and be refreshed while
+    # the main page is mid-run without either hiding the other.
+    return send_from_directory(app.static_folder, "group_log.html")
+
+
 @app.route("/api/status")
 def api_status():
     rows = status.build_status_table()

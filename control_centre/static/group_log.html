@@ -1,0 +1,342 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Libby Group Log</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --neon: #10dd8f;
+    --neon-dim: #1fbd85;
+    --neon-glow: rgba(16, 221, 143, 0.25);
+    --ink: #f1fbf5;
+    --muted: #a5c9b6;
+    --border: #1c3a2d;
+    --border-bright: #275842;
+    --card: #0c1a14;
+    --bg: #071410;
+    --bg2: #0a1a14;
+    --red: #ff7a86;
+    --amber: #ffb454;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scrollbar-color: var(--border-bright) var(--bg); }
+  body {
+    font-family: var(--font-ui);
+    font-size: 15px;
+    margin: 0; padding: 20px 28px 24px;
+    background:
+      linear-gradient(rgba(16,221,143,.018) 1px, transparent 1px) 0 0 / 100% 24px,
+      radial-gradient(circle at 12% -10%, rgba(16,221,143,.06), transparent 45%),
+      var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; }
+  h1 {
+    font-family: var(--font-mono);
+    font-size: 19px; margin: 0; color: var(--neon); letter-spacing: .01em;
+  }
+  .tab-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: var(--neon-dim); font-size: 13px; font-weight: 600; font-family: var(--font-ui);
+    text-decoration: none; border: 1px solid var(--border-bright); border-radius: 7px;
+    padding: 7px 16px; background: var(--card);
+  }
+  .tab-link:hover { color: var(--neon); border-color: var(--neon); background: rgba(16,221,143,.06); }
+  .tab-link .arrow { font-size: 11px; }
+  .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 16px; }
+  .badge {
+    display: inline-block; font-size: 11.5px; padding: 3px 9px; border-radius: 3px;
+    background: rgba(0,230,154,.1); color: var(--neon); margin-left: 4px; font-weight: 600;
+    border: 1px solid var(--border-bright);
+  }
+  .filter-row { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .filter-row input {
+    padding: 8px 12px; font-size: 13.5px; width: 260px; border: 1px solid var(--border);
+    border-radius: 5px; background: var(--bg2); color: var(--ink); font-family: inherit;
+  }
+  .filter-row input:focus { outline: none; border-color: var(--neon-dim); box-shadow: 0 0 0 3px var(--neon-glow); }
+  select {
+    font-size: 13.5px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg2); color: var(--ink); font-family: inherit;
+  }
+  .btn-secondary {
+    background: transparent; color: var(--neon-dim); border: 1px solid var(--border-bright);
+    border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600;
+    font-family: var(--font-ui);
+  }
+  .btn-secondary:hover { border-color: var(--neon); color: var(--neon); background: rgba(16,221,143,.06); }
+  .area-picker { position: relative; }
+  .area-picker input { width: 260px; padding-right: 30px; }
+  .area-picker::after {
+    content: "▾"; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); pointer-events: none; font-size: 11px;
+  }
+  .suggestions {
+    position: absolute; top: 100%; left: 0; margin-top: 4px; width: 340px; max-height: 340px;
+    overflow-y: auto; background: var(--bg2); border: 1px solid var(--border-bright); border-radius: 6px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.6), 0 0 20px rgba(0,230,154,.08); z-index: 10; display: none;
+  }
+  .suggestions.open { display: block; }
+  .suggestions div { padding: 8px 12px; font-size: 13.5px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .suggestions div:hover, .suggestions div.active { background: rgba(0, 230, 154, .1); color: var(--neon); }
+  .suggestions .type-tag { color: var(--muted); font-size: 11.5px; }
+  .suggestions .none { color: var(--muted); font-style: italic; cursor: default; }
+  .hint { color: var(--muted); font-size: 12.5px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; table-layout: fixed; }
+  th, td {
+    text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--border);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  th {
+    font-family: var(--font-mono);
+    color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; position: sticky; top: 0; background: var(--bg2);
+    cursor: pointer; user-select: none; padding-top: 7px; padding-bottom: 7px;
+  }
+  th:hover { color: var(--neon-dim); }
+  th.sorted { color: var(--neon); }
+  th .arrow { color: var(--neon); margin-left: 3px; }
+  .table-wrap { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; border-radius: 8px; border: 1px solid var(--border); background: var(--card); }
+  td.reason-cell { white-space: normal; color: var(--ink); overflow: visible; text-overflow: clip; }
+  td.outcome-cell { font-weight: 700; }
+  .outcome-accepted { color: var(--neon); }
+  .outcome-auto { color: var(--amber); }
+  .outcome-ai { color: var(--red); }
+  tr.row-accepted td:first-child { border-left: 3px solid var(--neon); }
+  tr.row-auto td:first-child { border-left: 3px solid var(--amber); }
+  tr.row-ai td:first-child { border-left: 3px solid var(--red); }
+  tr.row-accepted { background: rgba(16, 221, 143, .035); }
+  tr.row-auto { background: rgba(255, 180, 84, .035); }
+  tr.row-ai { background: rgba(255, 122, 134, .035); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&gt; group log</h1>
+  <a class="tab-link" href="/" target="_blank">Control centre <span class="arrow">↗</span></a>
+</header>
+<div class="sub">
+  Every group either pipeline has considered, accepted or not, and why — refreshes independently of any run in the control centre.
+  <span class="badge" id="groupLogCount"></span>
+</div>
+
+<div class="filter-row">
+  <div class="area-picker" id="areaPicker">
+    <input id="areaInput" placeholder="Filter by area — click to browse, or type to search..." autocomplete="off">
+    <div class="suggestions" id="areaSuggestions"></div>
+  </div>
+  <input id="groupLogFilterBox" placeholder="Search group or reason...">
+  <select id="groupLogAreaTypeFilter">
+    <option value="">All types</option>
+    <option value="constituency">Constituency</option>
+    <option value="ward">Ward</option>
+  </select>
+  <select id="groupLogOutcomeFilter">
+    <option value="">All outcomes</option>
+    <option value="accepted">Accepted</option>
+    <option value="auto_filtered">Auto-filtered (private, activity, buy/sell, etc.)</option>
+    <option value="ai_eliminated">AI-eliminated</option>
+  </select>
+  <button class="btn-secondary" id="groupLogRefreshBtn" type="button">Refresh</button>
+  <span class="hint" id="groupLogSortHint"></span>
+</div>
+
+<div class="table-wrap">
+  <table id="groupLogTable">
+    <colgroup>
+      <col style="width: 22%">
+      <col style="width: 11%">
+      <col style="width: 11%">
+      <col style="width: 18%">
+      <col style="width: 38%">
+    </colgroup>
+    <thead>
+      <tr id="groupLogHeadRow"></tr>
+    </thead>
+    <tbody id="groupLogBody"></tbody>
+  </table>
+</div>
+
+<script>
+let GROUP_LOG_ROWS = [];
+let AREA_NAMES = []; // [{name, type}], distinct areas actually present in the log
+let AREA_FILTER = null;
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => (
+    {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]
+  ));
+}
+
+// Every stage that isn't "ai_assessment" (or "kept") is a fixed, rule-based
+// cut — see uk.pipeline.AUTO_FILTER_STAGES. Rows written before the `stage`
+// column existed have none at all — fall back to sniffing `reason`'s
+// wording (every AI-assessment reason this codebase writes starts with "AI
+// assess...") so old, not-yet-reprocessed areas still land somewhere
+// sensible instead of defaulting silently.
+function glOutcome(r) {
+  if (r.accepted === "Y") return "accepted";
+  const stage = r.stage || "";
+  if (stage === "ai_assessment") return "ai_eliminated";
+  if (!stage && /^AI assess/.test(r.reason || "")) return "ai_eliminated";
+  return "auto_filtered";
+}
+const OUTCOME_STYLE = {
+  accepted:      {label: "Accepted",      cellClass: "outcome-accepted", rowClass: "row-accepted"},
+  auto_filtered: {label: "Auto-filtered", cellClass: "outcome-auto",     rowClass: "row-auto"},
+  ai_eliminated: {label: "AI-eliminated", cellClass: "outcome-ai",       rowClass: "row-ai"},
+};
+
+// Outcome sits right after Group (not last) so accepted/rejected is always
+// visible without scrolling sideways — the whole table is fixed-width and
+// sized to fit the viewport (see the <colgroup>), never wider than it.
+const GROUP_LOG_COLUMNS = [
+  {key: "group", label: "Group"},
+  {key: "outcome", label: "Outcome"},
+  {key: "area_type", label: "Area type"},
+  {key: "area_name", label: "Area"},
+  {key: "reason", label: "Reason"},
+];
+let GL_SORT_KEY = "area_name";
+let GL_SORT_DIR = 1;
+
+function glSetSort(key) {
+  if (GL_SORT_KEY === key) { GL_SORT_DIR *= -1; } else { GL_SORT_KEY = key; GL_SORT_DIR = 1; }
+  renderGroupLog();
+}
+
+function glCompareRows(a, b) {
+  const va = String(a[GL_SORT_KEY] || "").toLowerCase();
+  const vb = String(b[GL_SORT_KEY] || "").toLowerCase();
+  if (va < vb) return -1 * GL_SORT_DIR;
+  if (va > vb) return 1 * GL_SORT_DIR;
+  return 0;
+}
+
+function renderGroupLogHead() {
+  const row = document.getElementById("groupLogHeadRow");
+  row.innerHTML = GROUP_LOG_COLUMNS.map(c => {
+    const sorted = c.key === GL_SORT_KEY;
+    const arrow = sorted ? `<span class="arrow">${GL_SORT_DIR === 1 ? "▲" : "▼"}</span>` : "";
+    return `<th data-key="${c.key}" class="${sorted ? 'sorted' : ''}">${c.label}${arrow}</th>`;
+  }).join("");
+  row.querySelectorAll("th").forEach(th => th.addEventListener("click", () => glSetSort(th.dataset.key)));
+  const col = GROUP_LOG_COLUMNS.find(c => c.key === GL_SORT_KEY);
+  document.getElementById("groupLogSortHint").textContent =
+    `sorted by ${col.label} ${GL_SORT_DIR === 1 ? "(asc)" : "(desc)"} — click a column header to sort`;
+}
+
+function renderGroupLog() {
+  const body = document.getElementById("groupLogBody");
+  const f = (document.getElementById("groupLogFilterBox").value || "").toLowerCase();
+  const typeFilter = document.getElementById("groupLogAreaTypeFilter").value;
+  const outcomeFilter = document.getElementById("groupLogOutcomeFilter").value;
+
+  let rows = GROUP_LOG_ROWS;
+  if (AREA_FILTER) rows = rows.filter(r => r.area_name === AREA_FILTER);
+  if (typeFilter) rows = rows.filter(r => r.area_type === typeFilter);
+  if (outcomeFilter) rows = rows.filter(r => r.outcome === outcomeFilter);
+  if (f) {
+    rows = rows.filter(r =>
+      (r.group || "").toLowerCase().includes(f) ||
+      (r.reason || "").toLowerCase().includes(f)
+    );
+  }
+  rows = rows.slice().sort(glCompareRows);
+
+  document.getElementById("groupLogCount").textContent =
+    `${rows.length} shown / ${GROUP_LOG_ROWS.length} total`;
+
+  renderGroupLogHead();
+
+  body.innerHTML = rows.map(r => {
+    const style = OUTCOME_STYLE[r.outcome];
+    // title= on the truncated cells so the full text is still reachable
+    // (hover) even when ellipsis cuts it off — group/area names can run long.
+    return `
+    <tr class="${style.rowClass}">
+      <td title="${escapeHtml(r.group)}">${escapeHtml(r.group)}</td>
+      <td class="outcome-cell ${style.cellClass}">${style.label}</td>
+      <td title="${escapeHtml(r.area_type)}">${escapeHtml(r.area_type)}</td>
+      <td title="${escapeHtml(r.area_name)}">${escapeHtml(r.area_name)}</td>
+      <td class="reason-cell">${escapeHtml(r.reason)}</td>
+    </tr>
+  `;
+  }).join("");
+}
+
+// ── Area picker — same browse/search pattern as the main control centre's
+// area picker, but populated from areas that actually have log rows
+// (a short, relevant list) rather than the full ~650-constituency reference.
+function renderAreaSuggestions(query) {
+  const box = document.getElementById("areaSuggestions");
+  const q = query.trim().toLowerCase();
+  const pool = q ? AREA_NAMES.filter(a => a.name.toLowerCase().includes(q)) : AREA_NAMES;
+  const sorted = pool.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const matches = sorted.slice(0, q ? 40 : 200);
+  if (matches.length === 0) {
+    box.innerHTML = `<div class="none">No matches</div>`;
+  } else {
+    box.innerHTML = matches.map(a =>
+      `<div data-name="${escapeHtml(a.name)}"><span>${escapeHtml(a.name)}</span><span class="type-tag">${escapeHtml(a.type)}</span></div>`
+    ).join("");
+    if (!q && pool.length > matches.length) {
+      box.innerHTML += `<div class="none">…and ${pool.length - matches.length} more — type to narrow down</div>`;
+    }
+  }
+  box.classList.add("open");
+}
+
+function initAreaPicker() {
+  const input = document.getElementById("areaInput");
+  const box = document.getElementById("areaSuggestions");
+
+  input.addEventListener("input", () => {
+    if (!input.value.trim()) AREA_FILTER = null;
+    renderAreaSuggestions(input.value);
+    renderGroupLog();
+  });
+  input.addEventListener("focus", () => renderAreaSuggestions(input.value));
+  input.addEventListener("click", () => renderAreaSuggestions(input.value));
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("areaPicker").contains(e.target)) box.classList.remove("open");
+  });
+  box.addEventListener("click", (e) => {
+    const row = e.target.closest("[data-name]");
+    if (!row) return;
+    AREA_FILTER = row.dataset.name;
+    input.value = row.dataset.name;
+    box.classList.remove("open");
+    renderGroupLog();
+  });
+}
+
+async function loadGroupLog() {
+  const res = await fetch("/api/group_log");
+  const data = await res.json();
+  GROUP_LOG_ROWS = data.rows.map(r => ({...r, outcome: glOutcome(r)}));
+
+  const byName = new Map();
+  GROUP_LOG_ROWS.forEach(r => { if (r.area_name && !byName.has(r.area_name)) byName.set(r.area_name, r.area_type); });
+  AREA_NAMES = Array.from(byName, ([name, type]) => ({name, type}));
+
+  renderGroupLog();
+}
+
+document.getElementById("groupLogFilterBox").addEventListener("input", renderGroupLog);
+document.getElementById("groupLogAreaTypeFilter").addEventListener("change", renderGroupLog);
+document.getElementById("groupLogOutcomeFilter").addEventListener("change", renderGroupLog);
+document.getElementById("groupLogRefreshBtn").addEventListener("click", loadGroupLog);
+initAreaPicker();
+loadGroupLog();
+</script>
+</body>
+</html>
