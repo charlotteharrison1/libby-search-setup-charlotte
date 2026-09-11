@@ -47,6 +47,7 @@ Run from the repository root as a module:
 import argparse
 import logging
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -55,27 +56,24 @@ import pandas as pd
 from libby_core import assessment, descriptions
 from uk import about_context, data_loading, local_about_scraper, parsing, ward_geodata
 from uk.generate_search import slugify
-from uk.pipeline import _record_discards
+from uk.pipeline import _apply_ai_verdict, _dropped_rows, _kept_rows, _upsert_group_log
 from uk.settings import (
     ABOUT_PAGES_DIR,
+    CLACTON_INPUTS_DIR,
     WARD_ABOUT_PAGES_DIR,
     WARD_DESCRIPTIONS_PATH,
-    WARD_DISCARDED_PATH,
     WARD_OUTPUT_DIR,
     WARD_SCRAPED_DIR,
 )
 
 AREA_KIND = "UK electoral ward"
 
-# Columns for WARD_DISCARDED_PATH — mirrors uk.pipeline's DISCARD_COLUMNS
-# but keyed on ward_name/local_authority (the area actually being processed
-# here) rather than PCON24CD/PCON24NM (the constituency a ward happens to
-# sit in — not unique per ward). _record_discards itself is area-agnostic,
-# just splatting whatever **area_cols it's given into each record.
-WARD_DISCARD_COLUMNS = [
-    "ward_name", "local_authority", "url", "name", "members", "posts_a_month",
-    "locality", "first_assessment", "stage", "reason",
-]
+# group_log.csv's area_name for a ward — includes local_authority since ward
+# names aren't unique nationally (unlike a constituency's PCON24NM), so two
+# different wards sharing a name must not collide as the same "area" in the
+# shared, upserted log (see uk.pipeline._upsert_group_log).
+def _ward_area_name(ward_name: str, local_authority: str) -> str:
+    return f"{ward_name} ({local_authority})" if local_authority else ward_name
 
 logging.basicConfig(
     level=logging.INFO,
@@ -289,14 +287,13 @@ def _process_file(
     min_posts_a_month: float,
     force_descriptions: bool,
     about_lookup: dict[str, str],
-    discards: list[dict],
     use_about: bool = False,
     about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
 ) -> list[pd.DataFrame]:
     """Process one scraped ward file. Returns the final per-ward DataFrames
     it wrote (empty list if stop_before_ai_assessment, or nothing survived).
-    Discard records for every ward processed are appended to `discards`
-    (shared across every file in one run() call — see WARD_DISCARDED_PATH)."""
+    Each ward's group_log.csv rows are upserted (see
+    uk.pipeline._upsert_group_log) as soon as that ward finishes."""
     logger.info("Loading: %s", input_path)
     df_exploded = data_loading.load_new_scrape(input_path)
     if df_exploded.empty:
@@ -323,37 +320,36 @@ def _process_file(
         agg = _aggregate_ward_groups(df_exploded, ward_id)
         logger.info("  %d aggregated groups", len(agg))
 
+        area_name = _ward_area_name(ward_name, local_authority)
+
         # _row_id identifies each physical row through every filter below —
-        # see uk.pipeline._record_discards for why this (not url) is diffed.
+        # see uk.pipeline._dropped_rows for why this (not url) is diffed.
         agg = agg.reset_index(drop=True)
         agg["_row_id"] = agg.index
-        area_cols = {"ward_name": ward_name, "local_authority": local_authority}
+        ledger: list[dict] = []
 
         before = agg
         combined = agg[agg.public_y_n == True].copy()  # noqa: E712
-        discards.extend(_record_discards(
-            before, combined, "public_filter",
+        ledger += _dropped_rows(
+            before, combined, "ward", area_name, "public_filter",
             "Not marked public (private, or public/private unknown)",
-            **area_cols,
-        ))
+        )
 
         before = combined
         combined = _drop_buy_sell(combined)
-        discards.extend(_record_discards(
-            before, combined, "buy_sell",
+        ledger += _dropped_rows(
+            before, combined, "ward", area_name, "buy_sell",
             "Group name matched buy/sell/marketplace pattern",
-            **area_cols,
-        ))
+        )
 
         before = combined
         combined = combined[
             combined["posts_a_month"].isna() | (combined["posts_a_month"] >= min_posts_a_month)
         ].copy()
-        discards.extend(_record_discards(
-            before, combined, "activity_filter",
+        ledger += _dropped_rows(
+            before, combined, "ward", area_name, "activity_filter",
             f"Posts per month below threshold (< {min_posts_a_month})",
-            **area_cols,
-        ))
+        )
 
         # Same filename convention as uk/pipeline.py's constituency output
         # (groups_{Name}.csv, raw name — not slugified) and same "found
@@ -363,10 +359,14 @@ def _process_file(
             out_path = WARD_OUTPUT_DIR / f"{ward_name}-intermediate.csv"
             combined.drop(columns=["_row_id"]).to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
             logger.info("  Saved %d rows (pre-assessment) → %s", len(combined), out_path)
+            # Only drop records exist this early (no AI verdict yet) —
+            # upserted anyway so a partial/test run still leaves a trace.
+            _upsert_group_log("ward", area_name, ledger)
             continue
 
         if combined.empty:
             logger.info("  Nothing left to assess for %s", ward_name)
+            _upsert_group_log("ward", area_name, ledger)
             continue
 
         if force_descriptions:
@@ -395,6 +395,11 @@ def _process_file(
             df=combined, area_description=desc, area_kind=AREA_KIND, context_column=context_column,
         )
         combined["first_assessment"] = assessed.get("first_assessment")
+
+        # Row ids reassessed via a local --about re-check this run — see
+        # uk.pipeline.run()'s identical tracking for why this is kept
+        # separate from combined["first_assessment"] itself.
+        about_reassessed_ids: set = set()
 
         # ── --about: escalate on uncertainty, inline, this same run ──────────
         # See uk/pipeline.py's identical block and uk/local_about_scraper.py's
@@ -458,30 +463,28 @@ def _process_file(
                         context_column=context_column,
                     )
                     combined.loc[newly_matched, "first_assessment"] = reassessed["first_assessment"].values
+                    about_reassessed_ids |= set(combined.loc[newly_matched, "_row_id"])
 
         before = combined
-        final = combined[combined["first_assessment"] != "No"].copy()
-        discards.extend(_record_discards(
-            before, final, "ai_assessment",
-            'AI assessed group as not local to the area ("No")',
-            **area_cols,
-        ))
+        final, ai_reason = _apply_ai_verdict(before, context_column, about_reassessed_ids)
+        ledger += _dropped_rows(before, final, "ward", area_name, "ai_assessment", ai_reason)
 
         before = final
         final = final[final["members"].fillna(0) >= min_members].copy()
-        discards.extend(_record_discards(
-            before, final, "members_filter",
+        ledger += _dropped_rows(
+            before, final, "ward", area_name, "members_filter",
             f"Member count below threshold (< {min_members})",
-            **area_cols,
-        ))
+        )
 
         before = final
         final = _drop_unsure_churches(final, ward_name)
-        discards.extend(_record_discards(
-            before, final, "church_heuristic",
+        ledger += _dropped_rows(
+            before, final, "ward", area_name, "church_heuristic",
             'Assessed "Unsure" + church-pattern name, no area-name match',
-            **area_cols,
-        ))
+        )
+
+        ledger += _kept_rows(final, "ward", area_name, about_reassessed_ids)
+        _upsert_group_log("ward", area_name, ledger)
 
         final = final.sort_values(by=["members", "posts_a_month"], ascending=False, na_position="last")
 
@@ -501,6 +504,15 @@ def _process_file(
         out_path = WARD_OUTPUT_DIR / f"groups_{ward_name}.csv"
         final.to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
         logger.info("  Saved %d rows → %s", len(final), out_path)
+
+        # Stage straight into Clacton-etc/inputs/wards/ — same "done means
+        # staged" behavior as uk.pipeline's constituency side.
+        inputs_wards_dir = CLACTON_INPUTS_DIR / "wards"
+        inputs_wards_dir.mkdir(parents=True, exist_ok=True)
+        staged_path = inputs_wards_dir / out_path.name
+        shutil.move(str(out_path), str(staged_path))
+        logger.info("  Moved final result → %s", staged_path)
+
         all_final.append(final)
 
     return all_final
@@ -538,22 +550,16 @@ def run(
     # constituency or ward) is preferred over one file per ward.
     about_lookup = about_context.load_global_about_context(ABOUT_PAGES_DIR) if use_context else {}
 
-    # Unlike uk.pipeline's per-constituency discarded/<code>.csv, there's no
-    # per-ward resumability cache here (every run reprocesses everything
-    # fresh — see module docstring), so discards accumulate across every
-    # ward in every file and are written once, alongside ward_output.csv.
-    discards: list[dict] = []
+    # No per-ward resumability cache here (every run reprocesses everything
+    # fresh — see module docstring); each ward's group_log.csv rows are
+    # upserted individually as it finishes (see _process_file), so there's
+    # no combined write needed here the way uk.pipeline's Phase 3 once did.
     all_final = []
     for path in input_paths:
         all_final.extend(_process_file(
             Path(path), stop_before_ai_assessment, min_members, min_posts_a_month,
-            force_descriptions, about_lookup, discards, use_about, about_limit,
+            force_descriptions, about_lookup, use_about, about_limit,
         ))
-
-    pd.DataFrame(discards, columns=WARD_DISCARD_COLUMNS).to_csv(
-        WARD_DISCARDED_PATH, index=False, encoding="utf-8", errors="surrogatepass"
-    )
-    logger.info("Saved %d discarded rows → %s", len(discards), WARD_DISCARDED_PATH)
 
     if stop_before_ai_assessment or not all_final:
         return pd.DataFrame()

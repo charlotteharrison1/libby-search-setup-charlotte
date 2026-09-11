@@ -10,7 +10,6 @@ file (named by slug) and a groups_<Display Name>.csv (named by display
 name) can be recognized as the same area.
 """
 
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -21,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from uk.generate_search import slugify
 from uk.settings import (
     ABOUT_PAGES_DIR,
+    CLACTON_INPUTS_DIR,
     OUTPUT_DIR,
     REFERENCE_DIR,
     SCRAPED_DIR,
@@ -31,7 +31,6 @@ from uk.settings import (
     WARD_SEARCH_TARGETS_DIR,
 )
 
-CLACTON_INPUTS_DIR = Path(os.environ.get("CLACTON_INPUTS_DIR", "/Users/charlotte/vs_code/Clacton-etc/inputs"))
 CLACTON_GROUPS_DIR = CLACTON_INPUTS_DIR.parent / "groups"
 
 PUSH_MANIFEST = SEARCH_TARGETS_DIR / ".push_manifest"

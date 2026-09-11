@@ -15,6 +15,7 @@ import argparse
 import ast
 import logging
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -25,10 +26,11 @@ from uk import about_context, data_loading, geo, local_about_scraper, parsing
 from uk.generate_search import slugify
 from uk.settings import (
     ABOUT_PAGES_DIR,
+    CLACTON_INPUTS_DIR,
     DESCRIPTIONS_PATH,
     DENSITIES_PATH,
-    DISCARDED_DIR,
     GEOJSON_PATH,
+    GROUP_LOG_PATH,
     INTERMEDIATE_DIR,
     NEW_SCRAPE_PATH,
     OUTPUT_DIR,
@@ -164,8 +166,8 @@ def _combine(
 ) -> pd.DataFrame:
     """Combine new-scrape groups with add-on groups and merge constituency
     names. Drops no rows — the public/dedupe/locality filters are applied
-    separately in run() so each can be individually logged to the discard
-    log (see _record_discards)."""
+    separately in run() so each can be individually logged to the group
+    log (see _dropped_rows)."""
     keep_cols = ["PCON24CD", "name", "url", "public_y_n", "members", "posts_a_month", "locality", "locality_name"]
 
     parts = [new_groups[[c for c in keep_cols if c in new_groups.columns]]]
@@ -185,29 +187,99 @@ def _combine(
     return combined
 
 
-# ── discard logging ──────────────────────────────────────────────────────
+# ── group log ─────────────────────────────────────────────────────────────
+# One shared ledger for every group ever considered, across both pipelines:
+# was it accepted into a final groups_*.csv, and why (or why not). Replaces
+# the old per-constituency discarded/<code>.csv, the combined discarded.csv/
+# discarded_<Name>.csv, and the ward side's separate discarded.csv — all
+# consolidated into GROUP_LOG_PATH, upserted per area (see
+# _upsert_group_log) so reprocessing an area replaces its rows rather than
+# duplicating or leaving stale copies behind.
+GROUP_LOG_COLUMNS = ["group", "group_url", "area_type", "area_name", "accepted", "stage", "reason"]
 
-# Columns for discarded/<code>.csv and the combined discarded*.csv — fixed
-# so an empty discard list still writes a header, and so pipeline_ward.py
-# (which reuses _record_discards) produces the same shape.
-DISCARD_COLUMNS = [
-    "PCON24CD", "PCON24NM", "url", "name", "members", "posts_a_month",
-    "locality", "first_assessment", "stage", "reason",
-]
+# Every non-"kept" stage a row can be dropped at, grouped for the
+# control centre's "Auto-filtered vs AI-eliminated" split — every stage
+# here is a deterministic, rule-based cut; "ai_assessment" (not in this
+# set) is the only stage where a judgment call, not a fixed rule, decided.
+AUTO_FILTER_STAGES = {
+    "public_filter", "dedupe", "locality_filter", "buy_sell",
+    "activity_filter", "members_filter", "church_heuristic",
+}
 
 
-def _record_discards(
+def _apply_ai_verdict(
+    before: pd.DataFrame,
+    context_column: str | None,
+    about_reassessed_ids: set,
+) -> tuple[pd.DataFrame, dict]:
+    """Apply the final AI-verdict filter — shared by uk.pipeline and
+    uk.pipeline_ward, since the rule is identical for both.
+
+    Drops "No" as always. Also drops "Unsure" specifically when real
+    About-page context was actually used to reach that verdict (cached from
+    an earlier scrape, or freshly scraped via --about this run) — the extra
+    evidence had its chance to confirm relevance and didn't, so it's treated
+    as a reject rather than a keep. An "Unsure" with no About-context
+    available at all (nothing to check it against) is kept, same as before
+    this rule existed — there's no stronger signal to base a rejection on.
+
+    Returns (surviving_df, reason_by_row_id) — reason_by_row_id only has
+    entries for dropped rows, ready to hand straight to _dropped_rows.
+    """
+    verdict = before["first_assessment"].astype(str).str.strip().str.casefold()
+    is_no = verdict == "no"
+    is_unsure = verdict == "unsure"
+    had_context = (
+        before[context_column].notna()
+        if context_column and context_column in before.columns
+        else pd.Series(False, index=before.index)
+    )
+    was_reassessed = before["_row_id"].isin(about_reassessed_ids)
+    drop_mask = is_no | (is_unsure & had_context)
+    after = before[~drop_mask].copy()
+
+    def _reason(no, unsure_with_context, reassessed):
+        if no:
+            return (
+                'AI assessed group as not relevant to the area ("No"), after a local --about re-check'
+                if reassessed else
+                'AI assessed group as not relevant to the area ("No")'
+            )
+        # unsure_with_context
+        return (
+            'AI still assessed group as only possibly relevant ("Unsure") after a local '
+            '--about re-check — rejected, fresh About-context didn\'t confirm it'
+            if reassessed else
+            'AI still assessed group as only possibly relevant ("Unsure") with existing '
+            'About-page context available — rejected, About-context didn\'t confirm it'
+        )
+
+    reason_by_row_id = {
+        rid: _reason(no, unsure_ctx, reassessed)
+        for rid, no, unsure_ctx, reassessed in zip(
+            before.loc[drop_mask, "_row_id"], is_no[drop_mask],
+            (is_unsure & had_context)[drop_mask], was_reassessed[drop_mask],
+        )
+    }
+    return after, reason_by_row_id
+
+
+def _dropped_rows(
     before: pd.DataFrame,
     after: pd.DataFrame,
+    area_type: str,
+    area_name: str,
     stage: str,
-    reason: str,
-    **area_cols,
+    reason: str | dict,
 ) -> list[dict]:
-    """Diff `before`/`after` by row identity and return one discard record
-    per row dropped at this stage, tagged with `stage`/`reason` plus any
-    constant area-identifying columns (e.g. PCON24CD=..., PCON24NM=... for
-    the constituency pipeline; ward_name=..., local_authority=... for the
-    ward pipeline).
+    """Diff `before`/`after` by row identity and return one group_log
+    record (accepted="N") per row dropped at this stage.
+
+    `reason` is either one string used for every dropped row, or a dict
+    mapping `_row_id` -> a per-row reason string, for the one stage
+    (AI assessment) where the cause genuinely differs row to row — a "No"
+    reached only after a local --about re-check needs to say so, unlike a
+    confident first-pass "No".
 
     Diffs on a `_row_id` column (assigned once per area, before any
     filtering) rather than `url`, because a dedupe step can drop a row
@@ -222,18 +294,84 @@ def _record_discards(
     dropped = before[before["_row_id"].isin(dropped_ids)]
     records = []
     for _, r in dropped.iterrows():
+        row_reason = reason.get(r["_row_id"], "") if isinstance(reason, dict) else reason
         records.append({
-            **area_cols,
-            "url": r.get("url"),
-            "name": r.get("name"),
-            "members": r.get("members"),
-            "posts_a_month": r.get("posts_a_month"),
-            "locality": r.get("locality"),
-            "first_assessment": r.get("first_assessment"),
+            "group": r.get("name"),
+            "group_url": r.get("url"),
+            "area_type": area_type,
+            "area_name": area_name,
+            "accepted": "N",
             "stage": stage,
+            "reason": row_reason,
+        })
+    return records
+
+
+def _kept_rows(
+    final: pd.DataFrame,
+    area_type: str,
+    area_name: str,
+    about_reassessed_ids: set,
+) -> list[dict]:
+    """One group_log record (accepted="Y") per group that survived every
+    filter, with a reason built from its final AI verdict — noting when
+    that verdict came from a local --about re-check rather than the
+    first-pass assessment, and flagging the rare case where the AI call
+    itself never returned a verdict at all (libby_core.ai.iterate_df_rows
+    leaves a failed row's response blank rather than retrying or dropping
+    it, so it would otherwise survive silently with no explanation).
+
+    A kept "Unsure" here can only mean no About-context was ever available
+    for it — an Unsure verdict reached WITH real About-context (cached or
+    freshly --about-scraped) is now rejected upstream, before `final` is
+    even built (see run()'s ai_assessment stage)."""
+    records = []
+    for _, r in final.iterrows():
+        verdict = r.get("first_assessment")
+        reassessed = r.get("_row_id") in about_reassessed_ids
+        if pd.isna(verdict) or not str(verdict).strip():
+            reason = "AI assessment never returned a verdict (LLM call error) — kept by default"
+        elif str(verdict).strip().casefold() == "yes":
+            reason = 'AI assessed group as relevant to the area ("Yes")'
+            if reassessed:
+                reason += ", confirmed after a local --about re-check"
+        else:
+            reason = 'AI assessed group as possibly relevant to the area ("Unsure") — no About-context was available to check it against'
+        records.append({
+            "group": r.get("name"),
+            "group_url": r.get("url"),
+            "area_type": area_type,
+            "area_name": area_name,
+            "accepted": "Y",
+            "stage": "kept",
             "reason": reason,
         })
     return records
+
+
+def _upsert_group_log(area_type: str, area_name: str, rows: list[dict]) -> None:
+    """Replace this area's rows in GROUP_LOG_PATH with `rows` — same
+    replace-per-area semantics as _update_targeting_master, so reprocessing
+    an area never duplicates or leaves stale entries behind."""
+    new_rows = pd.DataFrame(rows, columns=GROUP_LOG_COLUMNS)
+    if GROUP_LOG_PATH.exists():
+        # latin-1, not utf-8: see _update_targeting_master's identical note —
+        # group names can carry unpaired surrogates written with
+        # errors="surrogatepass", which strict utf-8 decoding rejects.
+        existing = pd.read_csv(GROUP_LOG_PATH, dtype=str, encoding="latin-1").fillna("")
+        existing = existing[
+            ~((existing["area_type"] == area_type) & (existing["area_name"] == area_name))
+        ]
+        combined_log = pd.concat([existing, new_rows], ignore_index=True)
+    else:
+        combined_log = new_rows
+    # Fixed column order/set regardless of what an older-schema `existing`
+    # file did or didn't have (e.g. rows written before the "stage" column
+    # existed) — reindex adds any missing column as blank rather than
+    # leaving concat's column order to drift.
+    combined_log = combined_log.reindex(columns=GROUP_LOG_COLUMNS, fill_value="")
+    combined_log.to_csv(GROUP_LOG_PATH, index=False, encoding="utf-8", errors="surrogatepass")
+    logger.info("  Group log: %d row(s) for %s → %s", len(new_rows), area_name, GROUP_LOG_PATH)
 
 
 _BUY_SELL_PATTERN = re.compile(
@@ -369,6 +507,7 @@ def run(
     use_context: bool = False,
     use_about: bool = False,
     about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
+    force: bool = False,
 ):
     # --about implies --context: there's no reason to scrape fresh About
     # text and then not use it.
@@ -437,19 +576,30 @@ def run(
         .sort_values("PCON24NM")
     )
 
+    # Read once, not per-constituency: which constituencies already have
+    # group_log.csv rows, for the "already done, but predates this log"
+    # backfill hint below.
+    logged_constituencies: set[str] = set()
+    if GROUP_LOG_PATH.exists():
+        try:
+            log_df = pd.read_csv(GROUP_LOG_PATH, usecols=["area_type", "area_name"], dtype=str, encoding="latin-1")
+            logged_constituencies = set(log_df.loc[log_df["area_type"] == "constituency", "area_name"])
+        except Exception:
+            logger.warning("Could not read %s to check for already-logged constituencies", GROUP_LOG_PATH)
+
     # ── Phase 2: Per-constituency loop (run-once, skip if done) ─────────────
     for _, row in constituency_list.iterrows():
         pcon24cd = row["PCON24CD"]
         pcon24nm = row["PCON24NM"]
         intermediate_path = INTERMEDIATE_DIR / f"{pcon24cd}.csv"
 
-        if not stop_before_ai_assessment and intermediate_path.exists():
+        if not stop_before_ai_assessment and not force and intermediate_path.exists():
             logger.info("Skipping (already done): %s", pcon24nm)
-            if not (DISCARDED_DIR / f"{pcon24cd}.csv").exists():
+            if pcon24nm not in logged_constituencies:
                 logger.info(
-                    "  (no discarded/%s.csv — this constituency was processed before "
-                    "discard logging existed; delete its intermediate/%s.csv to "
-                    "reprocess and backfill one)", pcon24cd, pcon24cd,
+                    "  (no group_log.csv rows for %s — processed before this log "
+                    "existed; pass --force to reprocess and backfill it, or "
+                    "delete intermediate/%s.csv yourself)", pcon24nm, pcon24cd,
                 )
             continue
 
@@ -472,52 +622,46 @@ def run(
         # _row_id identifies each physical row through every filter below
         # (independent of the pandas index), so a dedupe drop can be
         # attributed even though its url survives via a different row. See
-        # _record_discards.
+        # _dropped_rows.
         combined = _combine(new_groups_c, addon_groups, pcon_map_df).reset_index(drop=True)
         combined["_row_id"] = combined.index
-        area_cols = {"PCON24CD": pcon24cd, "PCON24NM": pcon24nm}
-        discards: list[dict] = []
+        ledger: list[dict] = []
 
         before = combined
         combined = combined[combined.public_y_n == True].copy()  # noqa: E712
-        discards += _record_discards(
-            before, combined, "public_filter",
+        ledger += _dropped_rows(
+            before, combined, "constituency", pcon24nm, "public_filter",
             "Not marked public (private, or public/private unknown)",
-            **area_cols,
         )
 
         before = combined
         combined = combined.drop_duplicates(subset=["url"])
-        discards += _record_discards(
-            before, combined, "dedupe",
+        ledger += _dropped_rows(
+            before, combined, "constituency", pcon24nm, "dedupe",
             "Duplicate group url (kept the higher-ranked occurrence)",
-            **area_cols,
         )
 
         before = combined
         combined = combined[combined["locality"] != "X"]
-        discards += _record_discards(
-            before, combined, "locality_filter",
+        ledger += _dropped_rows(
+            before, combined, "constituency", pcon24nm, "locality_filter",
             "Locality classified as national/too broad (X)",
-            **area_cols,
         )
 
         before = combined
         combined = _drop_buy_sell(combined)
-        discards += _record_discards(
-            before, combined, "buy_sell",
+        ledger += _dropped_rows(
+            before, combined, "constituency", pcon24nm, "buy_sell",
             "Group name matched buy/sell/marketplace pattern",
-            **area_cols,
         )
 
         before = combined
         combined = combined[
             combined["posts_a_month"].isna() | (combined["posts_a_month"] >= 10)
         ].copy()
-        discards += _record_discards(
-            before, combined, "activity_filter",
+        ledger += _dropped_rows(
+            before, combined, "constituency", pcon24nm, "activity_filter",
             "Posts per month below threshold (< 10)",
-            **area_cols,
         )
 
         if stop_before_ai_assessment:
@@ -531,14 +675,10 @@ def run(
             logger.info(
                 "Saved %d rows (pre-assessment) → %s", len(combined), out_path
             )
-            discarded_path = DISCARDED_DIR / f"{pcon24cd}.csv"
-            pd.DataFrame(discards, columns=DISCARD_COLUMNS).to_csv(
-                discarded_path, index=False, encoding="utf-8", errors="surrogatepass"
-            )
-            logger.info(
-                "  Saved %d discarded rows (pre-assessment stages only) → %s",
-                len(discards), discarded_path,
-            )
+            # Only drop records exist this early (no AI verdict yet, so no
+            # "accepted" rows) — upserted anyway so a partial/test run still
+            # leaves a trace, same as before.
+            _upsert_group_log("constituency", pcon24nm, ledger)
             return combined.drop(columns=["_row_id"])
 
         desc = descriptions.ensure_description(
@@ -574,6 +714,12 @@ def run(
             )
             if "first_assessment" in assessed.columns:
                 combined["first_assessment"] = assessed["first_assessment"].values
+
+        # Row ids reassessed via a local --about re-check this run — tracked
+        # separately from `combined["first_assessment"]` because the ledger
+        # needs to say *why* a verdict is what it is, not just what it is
+        # (see _dropped_rows/_kept_rows).
+        about_reassessed_ids: set = set()
 
         # ── --about: escalate on uncertainty, inline, this same run ──────────
         # Scrape only groups pass-1 couldn't resolve (Unsure) and that
@@ -635,30 +781,27 @@ def run(
                         context_column=context_column,
                     )
                     combined.loc[newly_matched, "first_assessment"] = reassessed["first_assessment"].values
+                    about_reassessed_ids |= set(combined.loc[newly_matched, "_row_id"])
 
         before = combined
-        final_c = combined[combined["first_assessment"] != "No"].copy()
-        discards += _record_discards(
-            before, final_c, "ai_assessment",
-            'AI assessed group as not local to the area ("No")',
-            **area_cols,
-        )
+        final_c, ai_reason = _apply_ai_verdict(before, context_column, about_reassessed_ids)
+        ledger += _dropped_rows(before, final_c, "constituency", pcon24nm, "ai_assessment", ai_reason)
 
         before = final_c
         final_c = final_c[final_c["members"] > 50].copy()
-        discards += _record_discards(
-            before, final_c, "members_filter",
-            "Member count <= 50",
-            **area_cols,
+        ledger += _dropped_rows(
+            before, final_c, "constituency", pcon24nm, "members_filter", "Member count <= 50",
         )
 
         before = final_c
         final_c = _drop_unsure_churches(final_c, pcon24nm)
-        discards += _record_discards(
-            before, final_c, "church_heuristic",
+        ledger += _dropped_rows(
+            before, final_c, "constituency", pcon24nm, "church_heuristic",
             'Assessed "Unsure" + church-pattern name, no area-name match',
-            **area_cols,
         )
+
+        ledger += _kept_rows(final_c, "constituency", pcon24nm, about_reassessed_ids)
+        _upsert_group_log("constituency", pcon24nm, ledger)
 
         # about_context (when --context matched something) is prompt input
         # only — the raw About-page text has no place in the shipped output
@@ -669,12 +812,6 @@ def run(
             ascending=False,
             na_position="last",
         )
-
-        discarded_path = DISCARDED_DIR / f"{pcon24cd}.csv"
-        pd.DataFrame(discards, columns=DISCARD_COLUMNS).to_csv(
-            discarded_path, index=False, encoding="utf-8", errors="surrogatepass"
-        )
-        logger.info("  Saved %d discarded rows → %s", len(discards), discarded_path)
 
         breakdown = _targeting_breakdown(pcon24nm, final_c, new_groups_c)
         if not breakdown.empty:
@@ -727,28 +864,19 @@ def run(
         run_path = OUTPUT_DIR / f"groups_{constituency_name}.csv"
         final_df.to_csv(run_path, index=False, encoding="utf-8", errors="surrogatepass")
         logger.info("Saved %d rows → %s", len(final_df), run_path)
+
+        # Stage the finished result straight into Clacton-etc/inputs/, same
+        # as batch_pipeline.sh's "sync" mode already does for the CLI
+        # workflow — a single-constituency run is "done" once this lands
+        # here, no separate manual move needed.
+        CLACTON_INPUTS_DIR.mkdir(parents=True, exist_ok=True)
+        staged_path = CLACTON_INPUTS_DIR / run_path.name
+        shutil.move(str(run_path), str(staged_path))
+        logger.info("Moved final result → %s", staged_path)
     else:
         out_path = OUTPUT_DIR / "output.csv"
         final_df.to_csv(out_path, index=False, encoding="utf-8", errors="surrogatepass")
         logger.info("Saved %d rows → %s", len(final_df), out_path)
-
-    # ── Combine per-constituency discard logs, same split as output.csv/groups_<Name>.csv ──
-    if constituency_name:
-        discarded_files = sorted(p for p in DISCARDED_DIR.glob("*.csv") if p.stem in allowed_codes)
-        discarded_out_path = OUTPUT_DIR / f"discarded_{constituency_name}.csv"
-    else:
-        discarded_files = sorted(DISCARDED_DIR.glob("*.csv"))
-        discarded_out_path = OUTPUT_DIR / "discarded.csv"
-
-    if discarded_files:
-        discarded_df = pd.concat(
-            (pd.read_csv(p, encoding="latin-1", on_bad_lines="skip") for p in discarded_files),
-            axis=0, ignore_index=True,
-        )
-    else:
-        discarded_df = pd.DataFrame(columns=DISCARD_COLUMNS)
-    discarded_df.to_csv(discarded_out_path, index=False, encoding="utf-8", errors="surrogatepass")
-    logger.info("Saved %d discarded rows → %s", len(discarded_df), discarded_out_path)
 
     if not final_df.empty:
         summary = (
@@ -815,6 +943,16 @@ def main():
         default=local_about_scraper.DEFAULT_MAX_GROUPS,
         help=f"Max groups to About-scrape locally per area with --about (default: {local_about_scraper.DEFAULT_MAX_GROUPS})",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Reprocess a constituency even if intermediate/<code>.csv already "
+            "exists (normally skipped). Useful for backfilling group_log.csv "
+            "for constituencies processed before it existed, or after "
+            "changing filtering logic."
+        ),
+    )
     args = parser.parse_args()
 
     if args.stop_before_ai_assessment and not args.constituency:
@@ -828,6 +966,7 @@ def main():
         use_context=args.context,
         use_about=args.about,
         about_limit=args.about_limit,
+        force=args.force,
     )
 
 

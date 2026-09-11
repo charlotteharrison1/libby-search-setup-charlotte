@@ -19,14 +19,12 @@ SCRAPED_DIR: Path = DATA_DIR / "scraped"
 WARD_SCRAPED_DIR: Path = SCRAPED_DIR / "wards"
 OUTPUT_DIR: Path = _THIS_DIR / "output"
 INTERMEDIATE_DIR: Path = OUTPUT_DIR / "intermediate"
-DISCARDED_DIR: Path = OUTPUT_DIR / "discarded"
 WARD_OUTPUT_DIR: Path = OUTPUT_DIR / "wards"
 ABOUT_PAGES_DIR: Path = DATA_DIR / "about_pages"
 WARD_ABOUT_PAGES_DIR: Path = ABOUT_PAGES_DIR / "wards"
 
 OUTPUT_DIR.mkdir(exist_ok=True)
 INTERMEDIATE_DIR.mkdir(exist_ok=True)
-DISCARDED_DIR.mkdir(exist_ok=True)
 SEARCH_TARGETS_DIR.mkdir(exist_ok=True)
 WARD_SEARCH_TARGETS_DIR.mkdir(exist_ok=True)
 SCRAPED_DIR.mkdir(exist_ok=True)
@@ -56,11 +54,13 @@ NEW_SCRAPE_PATH = SCRAPED_DIR / "master_constituency_place_data_file.csv"
 DESCRIPTIONS_PATH = DATA_DIR / "descriptions.csv"
 WARD_DESCRIPTIONS_PATH = DATA_DIR / "ward_descriptions.csv"
 
-# uk.pipeline_ward has no per-ward resumability cache (every run reprocesses
-# everything fresh), so — unlike the constituency side's discarded/<code>.csv
-# per area — its discard log is written once, combined across every ward
-# processed in a run.
-WARD_DISCARDED_PATH = WARD_OUTPUT_DIR / "discarded.csv"
+# One log, every group, every area, both pipelines: for each group ever
+# considered, whether it was accepted into a final groups_*.csv and why (or
+# why not — including whether that verdict came from a local --about
+# re-check). Upserted per area as each is (re)processed — see
+# uk.pipeline._upsert_group_log — so a constituency's or ward's rows are
+# replaced wholesale on reprocessing, never duplicated or left stale.
+GROUP_LOG_PATH = OUTPUT_DIR / "group_log.csv"
 
 # uk.queue_unsure_for_about's output: a groups_file-shaped CSV of every
 # still-Unsure, not-yet-About-scraped group across every groups_*.csv found,
@@ -81,4 +81,13 @@ import os
 LOCAL_CHROME_PROFILE_PATH: Path = DATA_DIR / "local_chrome_profile"
 LIBBY_DOWNLOAD_PATH: Path = Path(
     os.environ.get("LIBBY_DOWNLOAD_PATH", "~/vs_code/libby_download/libby_download")
+).expanduser()
+
+# Where a finished run's groups_<Name>.csv gets staged for data_collection.py
+# (billable) to eventually pick up — same directory batch_pipeline.sh's
+# "sync" mode and control_centre/status.py's "staged" check already use.
+# Wards land in CLACTON_INPUTS_DIR / "wards", constituencies flat, matching
+# control_centre/status.py's existing scan of both locations.
+CLACTON_INPUTS_DIR: Path = Path(
+    os.environ.get("CLACTON_INPUTS_DIR", "/Users/charlotte/vs_code/Clacton-etc/inputs")
 ).expanduser()

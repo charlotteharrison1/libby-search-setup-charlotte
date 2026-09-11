@@ -198,6 +198,11 @@ def scrape_about_locally(
         )
     urls = urls[:max_groups]
 
+    logger.info(
+        "=== Using the LOCAL About scraper: opening a Chrome window on this "
+        "machine (your own Facebook login) to fetch %d group About page(s) ===",
+        len(urls),
+    )
     driver = _create_local_driver(headless=headless)
     try:
         if not is_logged_in(driver, page_loaded_ok):

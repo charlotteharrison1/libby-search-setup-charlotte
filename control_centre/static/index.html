@@ -17,6 +17,7 @@
     --bg: #071410;
     --bg2: #0a1a14;
     --red: #ff7a86;
+    --amber: #ffb454;
     --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   }
@@ -152,6 +153,28 @@
     background: rgba(0,230,154,.1); color: var(--neon); margin-left: 8px; font-weight: 600;
     border: 1px solid var(--border-bright);
   }
+  .tab-bar { display: flex; gap: 6px; margin-bottom: -1px; position: relative; z-index: 1; }
+  .tab-btn {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-bottom: none; border-radius: 7px 7px 0 0; padding: 9px 20px; cursor: pointer;
+    font-size: 13px; font-weight: 600; font-family: var(--font-ui);
+  }
+  .tab-btn:hover:not(.active) { color: var(--neon-dim); }
+  .tab-btn.active { color: var(--neon); background: var(--card); border-color: var(--border); }
+  td.reason-cell { white-space: normal; color: var(--ink); }
+  /* Group log: full-screen — top sections hidden while this tab is active
+     (see switchTab), so the table gets almost the whole viewport height. */
+  #tabGroupLog .table-wrap { max-height: calc(100vh - 250px); }
+  td.outcome-cell { font-weight: 700; }
+  .outcome-accepted { color: var(--neon); }
+  .outcome-auto { color: var(--amber); }
+  .outcome-ai { color: var(--red); }
+  tr.row-accepted td:first-child { border-left: 3px solid var(--neon); }
+  tr.row-auto td:first-child { border-left: 3px solid var(--amber); }
+  tr.row-ai td:first-child { border-left: 3px solid var(--red); }
+  tr.row-accepted { background: rgba(16, 221, 143, .035); }
+  tr.row-auto { background: rgba(255, 180, 84, .035); }
+  tr.row-ai { background: rgba(255, 122, 134, .035); }
 </style>
 </head>
 <body>
@@ -161,7 +184,7 @@
 </header>
 <div class="sub">Every action below runs a real local command — the exact command is always shown in the log before it executes.</div>
 
-<section>
+<section id="sectionRunAction">
   <h2>Run an action</h2>
   <div class="controls">
     <div>
@@ -181,7 +204,7 @@
   <div id="cmdPreview" class="cmd-preview">$ …</div>
 </section>
 
-<section>
+<section id="sectionCommandLog">
   <div class="log-head">
     <h2>Command log</h2>
     <button class="btn-danger" id="killBtn" type="button" disabled>■ Stop</button>
@@ -194,7 +217,12 @@
   </div>
 </section>
 
-<section>
+<div class="tab-bar">
+  <button class="tab-btn active" id="tabBtnStatus" type="button">Status</button>
+  <button class="tab-btn" id="tabBtnGroupLog" type="button">Group log</button>
+</div>
+
+<section id="tabStatus">
   <h2>Status <span class="badge" id="areaCount"></span></h2>
   <div class="filter-row">
     <input id="filterBox" placeholder="Search all constituencies + wards...">
@@ -216,6 +244,37 @@
   </div>
 </section>
 
+<section id="tabGroupLog" style="display:none">
+  <h2>Group log <span class="badge" id="groupLogCount"></span></h2>
+  <div class="hint" style="margin-top:-8px; margin-bottom: 12px;">
+    Every group either pipeline has considered, accepted or not, and why — see uk/output/group_log.csv.
+  </div>
+  <div class="filter-row">
+    <input id="groupLogFilterBox" placeholder="Search group, area, or reason...">
+    <select id="groupLogAreaTypeFilter">
+      <option value="">All types</option>
+      <option value="constituency">Constituency</option>
+      <option value="ward">Ward</option>
+    </select>
+    <select id="groupLogOutcomeFilter">
+      <option value="">All outcomes</option>
+      <option value="accepted">Accepted</option>
+      <option value="auto_filtered">Auto-filtered (private, activity, buy/sell, etc.)</option>
+      <option value="ai_eliminated">AI-eliminated</option>
+    </select>
+    <button class="btn-secondary" id="groupLogRefreshBtn" type="button">Refresh</button>
+    <span class="hint" id="groupLogSortHint"></span>
+  </div>
+  <div class="table-wrap">
+    <table id="groupLogTable">
+      <thead>
+        <tr id="groupLogHeadRow"></tr>
+      </thead>
+      <tbody id="groupLogBody"></tbody>
+    </table>
+  </div>
+</section>
+
 <script>
 let AREAS = [];
 let ACTIONS = [];
@@ -232,6 +291,7 @@ const PARAM_DEFS = {
     {key: "context", label: "--context"},
     {key: "about", label: "--about"},
     {key: "stop_before_ai_assessment", label: "--stop-before-ai-assessment"},
+    {key: "force", label: "--force (reprocess even if already done — constituencies only)"},
   ],
   set_scrape_target: [{key: "force", label: "--force"}],
   view_scrape_target: [],
@@ -242,6 +302,12 @@ const PARAM_DEFS = {
 };
 
 function mark(v) { return `<td class="${v ? 'mark-yes' : 'mark-no'}">${v ? '✓' : '–'}</td>`; }
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => (
+    {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]
+  ));
+}
 
 function isTouched(a) {
   return a.generated || a.pushed || a.scraped || a.about || a.processed || a.staged || a.promoted;
@@ -379,6 +445,130 @@ function renderStatus(filterText) {
       ${mark(a.generated)}${mark(a.pushed)}${mark(a.scraped)}${mark(a.about)}${mark(a.processed)}${mark(a.staged)}${mark(a.promoted)}
     </tr>
   `).join("");
+}
+
+// ── Group log tab ────────────────────────────────────────────────────────
+let GROUP_LOG_ROWS = [];
+let GROUP_LOG_LOADED = false;
+
+const GROUP_LOG_COLUMNS = [
+  {key: "group", label: "Group"},
+  {key: "area_type", label: "Area type"},
+  {key: "area_name", label: "Area"},
+  {key: "outcome", label: "Outcome"},
+  {key: "reason", label: "Reason"},
+];
+let GL_SORT_KEY = "area_name";
+let GL_SORT_DIR = 1;
+
+// Every stage that isn't "ai_assessment" (or "kept") is a fixed, rule-based
+// cut, not a judgment call — see uk.pipeline.AUTO_FILTER_STAGES, mirrored
+// here so the dashboard can split "auto-filtered" vs "AI-eliminated"
+// without a round trip. Rows written before the `stage` column existed
+// have no stage at all — fall back to sniffing `reason`'s wording (every
+// AI-assessment reason this codebase has ever written starts with "AI
+// assessed" or "AI assessment"), so old, not-yet-reprocessed areas still
+// land in a sensible bucket instead of silently defaulting to one.
+function glOutcome(r) {
+  if (r.accepted === "Y") return "accepted";
+  const stage = r.stage || "";
+  if (stage === "ai_assessment") return "ai_eliminated";
+  if (!stage && /^AI assess/.test(r.reason || "")) return "ai_eliminated";
+  return "auto_filtered";
+}
+const OUTCOME_STYLE = {
+  accepted:      {label: "Accepted",      cellClass: "outcome-accepted", rowClass: "row-accepted"},
+  auto_filtered: {label: "Auto-filtered", cellClass: "outcome-auto",     rowClass: "row-auto"},
+  ai_eliminated: {label: "AI-eliminated", cellClass: "outcome-ai",       rowClass: "row-ai"},
+};
+
+function glSetSort(key) {
+  if (GL_SORT_KEY === key) { GL_SORT_DIR *= -1; } else { GL_SORT_KEY = key; GL_SORT_DIR = 1; }
+  renderGroupLog();
+}
+
+function glCompareRows(a, b) {
+  const va = String(a[GL_SORT_KEY] || "").toLowerCase();
+  const vb = String(b[GL_SORT_KEY] || "").toLowerCase();
+  if (va < vb) return -1 * GL_SORT_DIR;
+  if (va > vb) return 1 * GL_SORT_DIR;
+  return 0;
+}
+
+function renderGroupLogHead() {
+  const row = document.getElementById("groupLogHeadRow");
+  row.innerHTML = GROUP_LOG_COLUMNS.map(c => {
+    const sorted = c.key === GL_SORT_KEY;
+    const arrow = sorted ? `<span class="arrow">${GL_SORT_DIR === 1 ? "▲" : "▼"}</span>` : "";
+    return `<th data-key="${c.key}" class="${sorted ? 'sorted' : ''}">${c.label}${arrow}</th>`;
+  }).join("");
+  row.querySelectorAll("th").forEach(th => th.addEventListener("click", () => glSetSort(th.dataset.key)));
+  const col = GROUP_LOG_COLUMNS.find(c => c.key === GL_SORT_KEY);
+  document.getElementById("groupLogSortHint").textContent =
+    `sorted by ${col.label} ${GL_SORT_DIR === 1 ? "(asc)" : "(desc)"} — click a column header to sort`;
+}
+
+function renderGroupLog() {
+  const body = document.getElementById("groupLogBody");
+  const f = (document.getElementById("groupLogFilterBox").value || "").toLowerCase();
+  const typeFilter = document.getElementById("groupLogAreaTypeFilter").value;
+  const outcomeFilter = document.getElementById("groupLogOutcomeFilter").value;
+
+  let rows = GROUP_LOG_ROWS;
+  if (typeFilter) rows = rows.filter(r => r.area_type === typeFilter);
+  if (outcomeFilter) rows = rows.filter(r => r.outcome === outcomeFilter);
+  if (f) {
+    rows = rows.filter(r =>
+      (r.group || "").toLowerCase().includes(f) ||
+      (r.area_name || "").toLowerCase().includes(f) ||
+      (r.reason || "").toLowerCase().includes(f)
+    );
+  }
+  rows = rows.slice().sort(glCompareRows);
+
+  document.getElementById("groupLogCount").textContent =
+    `${rows.length} shown / ${GROUP_LOG_ROWS.length} total`;
+
+  renderGroupLogHead();
+
+  const shown = rows.slice(0, 1000);
+  body.innerHTML = shown.map(r => {
+    const style = OUTCOME_STYLE[r.outcome];
+    return `
+    <tr class="${style.rowClass}">
+      <td>${escapeHtml(r.group)}</td>
+      <td>${escapeHtml(r.area_type)}</td>
+      <td>${escapeHtml(r.area_name)}</td>
+      <td class="outcome-cell ${style.cellClass}">${style.label}</td>
+      <td class="reason-cell">${escapeHtml(r.reason)}</td>
+    </tr>
+  `;
+  }).join("");
+  if (rows.length > shown.length) {
+    body.innerHTML += `<tr><td colspan="5" class="hint">…and ${rows.length - shown.length} more — narrow with a filter to see them</td></tr>`;
+  }
+}
+
+async function loadGroupLog() {
+  const res = await fetch("/api/group_log");
+  const data = await res.json();
+  GROUP_LOG_ROWS = data.rows.map(r => ({...r, outcome: glOutcome(r)}));
+  GROUP_LOG_LOADED = true;
+  renderGroupLog();
+}
+
+// Group log is "full screen": Run an action + Command log (not relevant
+// while auditing the log) are hidden entirely rather than just leaving more
+// room, per request — switching back to Status restores them.
+function switchTab(name) {
+  const showStatus = name === "status";
+  document.getElementById("tabStatus").style.display = showStatus ? "" : "none";
+  document.getElementById("tabGroupLog").style.display = showStatus ? "none" : "";
+  document.getElementById("sectionRunAction").style.display = showStatus ? "" : "none";
+  document.getElementById("sectionCommandLog").style.display = showStatus ? "" : "none";
+  document.getElementById("tabBtnStatus").classList.toggle("active", showStatus);
+  document.getElementById("tabBtnGroupLog").classList.toggle("active", !showStatus);
+  if (!showStatus && !GROUP_LOG_LOADED) loadGroupLog();
 }
 
 function renderActionSelect() {
@@ -647,6 +837,12 @@ document.getElementById("pick5Btn").addEventListener("click", pick5);
 document.getElementById("filterBox").addEventListener("input", e => renderStatus(e.target.value));
 document.getElementById("showAllToggle").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
 document.getElementById("typeFilter").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
+document.getElementById("tabBtnStatus").addEventListener("click", () => switchTab("status"));
+document.getElementById("tabBtnGroupLog").addEventListener("click", () => switchTab("group_log"));
+document.getElementById("groupLogFilterBox").addEventListener("input", renderGroupLog);
+document.getElementById("groupLogAreaTypeFilter").addEventListener("change", renderGroupLog);
+document.getElementById("groupLogOutcomeFilter").addEventListener("change", renderGroupLog);
+document.getElementById("groupLogRefreshBtn").addEventListener("click", loadGroupLog);
 initAreaPicker();
 loadStatus();
 </script>

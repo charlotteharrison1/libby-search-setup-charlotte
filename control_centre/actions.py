@@ -92,9 +92,21 @@ def _build_pull_about(row, params):
 
 def _build_run_pipeline(row, params):
     if row["type"] == "constituency":
-        cmd = ["python3", "-m", "uk.pipeline", "--constituency", row["name"]]
+        # Must pass --input explicitly, pointing at this constituency's own
+        # pulled scrape (uk/data/scraped/<slug>_search_targets.csv) — the
+        # same file batch_pipeline.sh's "sync" mode uses. Without --input,
+        # uk.pipeline falls back to its NEW_SCRAPE_PATH default
+        # (master_constituency_place_data_file.csv), a single shared file
+        # that's only ever correct for a full, all-constituencies run — not
+        # for one constituency at a time.
+        scraped_path = REPO_ROOT / "uk" / "data" / "scraped" / f"{row['slug']}_search_targets.csv"
+        cmd = ["python3", "-m", "uk.pipeline", "--input", str(scraped_path), "--constituency", row["name"]]
         if params.get("stop_before_ai_assessment"):
             cmd.append("--stop-before-ai-assessment")
+        if params.get("force"):
+            # uk.pipeline_ward has no such flag — it always reprocesses fresh
+            # (no per-ward resumability cache), so --force is constituency-only.
+            cmd.append("--force")
     else:
         scraped_path = REPO_ROOT / "uk" / "data" / "scraped" / "wards" / f"{row['slug']}_search_targets.csv"
         cmd = ["python3", "-m", "uk.pipeline_ward", "--input", str(scraped_path)]

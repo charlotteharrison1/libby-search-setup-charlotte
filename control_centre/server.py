@@ -22,11 +22,13 @@ import threading
 import webbrowser
 from pathlib import Path
 
+import pandas as pd
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from control_centre import actions, status
+from uk.settings import GROUP_LOG_PATH
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PORT = 5151
@@ -55,6 +57,21 @@ def api_status():
         for aid, (label, category, needs_area, _builder) in actions.ACTIONS.items()
     ]
     return jsonify({"areas": rows, "actions": action_list})
+
+
+@app.route("/api/group_log")
+def api_group_log():
+    """Every group either pipeline has ever considered, accepted or not,
+    and why — see uk.pipeline._upsert_group_log. Read fresh on every call
+    (not cached) since it changes on every pipeline run."""
+    if not GROUP_LOG_PATH.exists():
+        return jsonify({"rows": []})
+    # latin-1, not utf-8: written with errors="surrogatepass" (group names
+    # can carry unpaired surrogates from mangled scraped emoji) — same
+    # reasoning as every other read of a surrogatepass-written CSV in this
+    # repo (see uk.pipeline._upsert_group_log's own read of this file).
+    df = pd.read_csv(GROUP_LOG_PATH, dtype=str, encoding="latin-1").fillna("")
+    return jsonify({"rows": df.to_dict(orient="records")})
 
 
 def _resolve_command(body: dict) -> tuple[list[str] | None, tuple[dict, int] | None]:
