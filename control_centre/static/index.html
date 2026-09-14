@@ -167,6 +167,7 @@
 <header>
   <h1>&gt; libby control centre<span class="caret">_</span></h1>
   <a class="tab-link" href="/group-log" target="_blank">Group log <span class="arrow">↗</span></a>
+  <a class="tab-link" href="/analysis-centre" target="_blank">Analysis centre <span class="arrow">↗</span></a>
 </header>
 <div class="sub">Every action below runs a real local command — the exact command is always shown in the log before it executes.</div>
 
@@ -183,6 +184,7 @@
     <span id="paramBox"></span>
     <button class="btn-secondary" id="pickNextBtn" type="button" title="Next constituency not yet generated/pushed">Pick next</button>
     <button class="btn-secondary" id="pick5Btn" type="button" title="Next 5 constituencies not yet generated/pushed">Pick 5</button>
+    <button class="btn-secondary" id="queueBtn" type="button" title="Add this exact command to the queue instead of running it now">+ Queue</button>
     <button class="run" id="runBtn">Run</button>
   </div>
   <div class="hint" id="actionHint"></div>
@@ -192,7 +194,7 @@
 
 <section>
   <div class="log-head">
-    <h2>Command log</h2>
+    <h2>Command log <span class="hint" id="logSourceHint"></span></h2>
     <button class="btn-danger" id="killBtn" type="button" disabled>■ Stop</button>
   </div>
   <div id="log">(nothing run yet)</div>
@@ -200,6 +202,25 @@
     <span class="stdin-prompt">&gt;</span>
     <input id="stdinInput" placeholder="Send input to the running command (e.g. press Enter for a login prompt)..." disabled autocomplete="off">
     <button class="btn-secondary" id="stdinSendBtn" type="button" disabled>Send</button>
+  </div>
+</section>
+
+<section>
+  <div class="log-head">
+    <h2>Queue <span class="badge" id="queueCount"></span></h2>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-secondary" id="queuePauseBtn" type="button">Pause</button>
+      <button class="btn-secondary" id="queueClearBtn" type="button">Clear finished</button>
+    </div>
+  </div>
+  <div class="hint" style="margin-bottom:10px;">Queued runs execute one at a time, in the background, sharing the same slot as a manual Run — persists across a server restart.</div>
+  <div class="table-wrap" style="max-height:260px;">
+    <table id="queueTable">
+      <thead>
+        <tr><th>Label</th><th>Status</th><th>Added</th><th>Started</th><th>Finished</th><th></th></tr>
+      </thead>
+      <tbody id="queueBody"></tbody>
+    </table>
   </div>
 </section>
 
@@ -419,6 +440,13 @@ function updateAreaPickerVisibility() {
   if (!action || !action.needs_area) {
     SELECTED_SLUG = null;
     document.getElementById("areaInput").value = "";
+  } else if (SELECTED_SLUG && !areaPickerPool().some(a => a.slug === SELECTED_SLUG)) {
+    // Switched to (or the area list changed under) an action whose picker
+    // pool no longer includes the currently-selected area (e.g. Run
+    // pipeline needs a scraped area) — clear it rather than leaving a
+    // stale, ineligible selection in place.
+    SELECTED_SLUG = null;
+    document.getElementById("areaInput").value = "";
   }
 }
 
@@ -494,12 +522,26 @@ async function updatePreview() {
   }
 }
 
+// run_pipeline needs --input pointing at a real scraped file (see
+// actions.py's _build_run_pipeline) — an area that hasn't been scraped
+// (pulled back) yet can't actually be run, so don't offer it as a choice.
+// Every other action's own readiness (generated/pushed/etc.) isn't
+// enforced here — this is specifically about what --input requires.
+function areaPickerPool() {
+  const action = currentAction();
+  if (action && action.id === "run_pipeline") {
+    return AREAS.filter(a => a.scraped);
+  }
+  return AREAS;
+}
+
 function renderSuggestions(query) {
   const box = document.getElementById("areaSuggestions");
   const q = query.trim().toLowerCase();
+  const base = areaPickerPool();
   // Empty query -> browse the full list (sorted, capped, scrollable) like a
   // real dropdown; typing narrows it, same as before.
-  const pool = q ? AREAS.filter(a => a.name.toLowerCase().includes(q) || a.slug.includes(q)) : AREAS;
+  const pool = q ? base.filter(a => a.name.toLowerCase().includes(q) || a.slug.includes(q)) : base;
   const sorted = pool.slice().sort((a, b) => a.name.localeCompare(b.name));
   const matches = sorted.slice(0, q ? 40 : 200);
   if (matches.length === 0) {
@@ -574,6 +616,7 @@ async function runAction() {
   document.getElementById("stdinInput").disabled = false;
   document.getElementById("stdinSendBtn").disabled = false;
   document.getElementById("log").textContent = "";
+  document.getElementById("logSourceHint").textContent = "";
   appendLog("Starting...\n");
 
   try {
@@ -644,6 +687,120 @@ async function killCurrent() {
   // still (or newly) running; avoids a stale-enabled button after a stop.
 }
 
+// ── Queue ────────────────────────────────────────────────────────────────
+let QUEUE_PAUSED = false;
+
+async function addToQueue() {
+  const action = currentAction();
+  if (!action) return;
+  if (action.needs_area && !SELECTED_SLUG) {
+    appendLog("Pick an area from the search box first.\n", "exit-bad");
+    return;
+  }
+  const params = buildParams();
+  const btn = document.getElementById("queueBtn");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/queue/add", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action_id: action.id, slug: SELECTED_SLUG, params}),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      appendLog(`Queue add failed: ${data.error || data.message}\n`, "exit-bad");
+    } else {
+      appendLog(`Queued: ${data.item.label}\n`, "cmd");
+    }
+    await loadQueue();
+  } catch (e) {
+    appendLog(`Queue add failed: ${e}\n`, "exit-bad");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function fmtTime(ts) {
+  return ts ? new Date(ts * 1000).toLocaleTimeString() : "—";
+}
+
+const QUEUE_STATUS_CLASS = {
+  pending: "hint", running: "cmd", done: "mark-yes", failed: "exit-bad", cancelled: "hint",
+};
+
+function renderQueueTable(items, paused) {
+  document.getElementById("queueCount").textContent =
+    `${items.length} item(s)` + (paused ? " — paused" : "");
+  document.getElementById("queuePauseBtn").textContent = paused ? "Resume" : "Pause";
+
+  const body = document.getElementById("queueBody");
+  if (items.length === 0) {
+    body.innerHTML = `<tr><td colspan="6" class="hint">Queue is empty — use "+ Queue" next to Run to add the currently-configured command.</td></tr>`;
+    return;
+  }
+  body.innerHTML = items.map(it => {
+    const cls = QUEUE_STATUS_CLASS[it.status] || "";
+    const actions = [];
+    if (it.status === "pending") actions.push(`<button class="btn-secondary" data-queue-remove="${it.id}" type="button">Remove</button>`);
+    if (it.status === "running" || it.status === "done" || it.status === "failed" || it.status === "cancelled")
+      actions.push(`<button class="btn-secondary" data-queue-log="${it.id}" data-queue-label="${escapeHtml(it.label)}" type="button">View log</button>`);
+    if (it.status === "failed" || it.status === "cancelled") actions.push(`<button class="btn-secondary" data-queue-retry="${it.id}" type="button">Retry</button>`);
+    return `
+      <tr>
+        <td>${escapeHtml(it.label)}</td>
+        <td class="${cls}">${it.status}</td>
+        <td>${fmtTime(it.added_at)}</td>
+        <td>${fmtTime(it.started_at)}</td>
+        <td>${fmtTime(it.finished_at)}</td>
+        <td>${actions.join(" ")}</td>
+      </tr>`;
+  }).join("");
+}
+
+async function loadQueue() {
+  try {
+    const res = await fetch("/api/queue");
+    const data = await res.json();
+    QUEUE_PAUSED = data.paused;
+    renderQueueTable(data.items, data.paused);
+  } catch (e) {
+    // A transient poll failure isn't worth interrupting the page over.
+  }
+}
+
+async function viewQueueLog(id, label) {
+  const res = await fetch(`/api/queue/log/${id}`);
+  const data = await res.json();
+  document.getElementById("log").textContent = data.log || "(no output)";
+  document.getElementById("logSourceHint").textContent = `— showing queued run: ${label}`;
+}
+
+document.getElementById("queueBody").addEventListener("click", async (e) => {
+  const removeId = e.target.dataset.queueRemove;
+  const logId = e.target.dataset.queueLog;
+  const retryId = e.target.dataset.queueRetry;
+  if (removeId) {
+    await fetch("/api/queue/remove", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: removeId})});
+    loadQueue();
+  } else if (logId) {
+    viewQueueLog(logId, e.target.dataset.queueLabel);
+  } else if (retryId) {
+    await fetch("/api/queue/retry", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: retryId})});
+    loadQueue();
+  }
+});
+
+document.getElementById("queueBtn").addEventListener("click", addToQueue);
+document.getElementById("queuePauseBtn").addEventListener("click", async () => {
+  await fetch(QUEUE_PAUSED ? "/api/queue/resume" : "/api/queue/pause", {method: "POST"});
+  loadQueue();
+});
+document.getElementById("queueClearBtn").addEventListener("click", async () => {
+  await fetch("/api/queue/clear_finished", {method: "POST"});
+  loadQueue();
+});
+setInterval(loadQueue, 3000);
+
 document.getElementById("actionSelect").addEventListener("change", () => {
   if (currentAction() && currentAction().id !== "prep_bulk") BULK_NAMES = [];
   updateAreaPickerVisibility();
@@ -665,6 +822,7 @@ document.getElementById("showAllToggle").addEventListener("change", () => render
 document.getElementById("typeFilter").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
 initAreaPicker();
 loadStatus();
+loadQueue();
 </script>
 </body>
 </html>

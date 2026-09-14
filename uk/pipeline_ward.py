@@ -58,7 +58,9 @@ from uk import about_context, data_loading, local_about_scraper, parsing, ward_g
 from uk.generate_search import slugify
 from uk.pipeline import (
     _apply_ai_verdict,
+    _apply_exclusions,
     _dropped_rows,
+    _excluded_ledger_rows,
     _kept_rows,
     _load_overrides_by_area,
     _missing_override_rows,
@@ -330,7 +332,7 @@ def _process_file(
     min_posts_a_month: float,
     force_descriptions: bool,
     about_lookup: dict[str, str],
-    overrides_by_ward: dict[str, set[str]],
+    overrides_by_ward: dict[str, dict[str, set[str]]],
     use_about: bool = False,
     about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
 ) -> list[pd.DataFrame]:
@@ -529,11 +531,18 @@ def _process_file(
 
         ledger += _kept_rows(final, "ward", area_name, about_reassessed_ids)
 
-        recovered = _missing_override_rows(final, agg, overrides_by_ward.get(area_name, set()))
+        area_overrides = overrides_by_ward.get(area_name, {"include": set(), "exclude": set()})
+
+        recovered = _missing_override_rows(final, agg, area_overrides["include"])
         if not recovered.empty:
             logger.info("  Re-applied %d manually-recovered group(s) for %s", len(recovered), area_name)
             ledger += _recovered_ledger_rows(recovered, "ward", area_name)
             final = pd.concat([final, recovered], ignore_index=True)
+
+        final, excluded = _apply_exclusions(final, area_overrides["exclude"])
+        if not excluded.empty:
+            logger.info("  Re-applied %d manually-removed group(s) for %s", len(excluded), area_name)
+            ledger += _excluded_ledger_rows(excluded, "ward", area_name)
 
         _upsert_group_log("ward", area_name, ledger)
 
@@ -575,7 +584,7 @@ def run(
     min_members: int = DEFAULT_MIN_MEMBERS,
     min_posts_a_month: float = DEFAULT_MIN_POSTS_A_MONTH,
     force_descriptions: bool = False,
-    use_context: bool = False,
+    use_context: bool = True,
     use_about: bool = False,
     about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
 ) -> pd.DataFrame:
@@ -635,13 +644,26 @@ def main():
     parser.add_argument("--min-posts-a-month", type=float, default=DEFAULT_MIN_POSTS_A_MONTH, help=f"Minimum posts/month to keep a group (default: {DEFAULT_MIN_POSTS_A_MONTH})")
     parser.add_argument("--force", action="store_true", help="Regenerate each ward's cached AI description instead of reusing what's in ward_descriptions.csv")
     parser.add_argument(
+        "--no-context",
+        action="store_true",
+        help=(
+            "Skip loading the global About-context cache (on by default — see "
+            "--context's old help text below for what it does). Only useful "
+            "for a quick name-only assessment; leaving About-context on is "
+            "free (no scraping, no extra LLM cost) so there's no real reason "
+            "to normally disable it."
+        ),
+    )
+    parser.add_argument(
         "--context",
         action="store_true",
         help=(
-            "Load a global, URL-keyed cache of every group's About-page text "
-            "from every *_about.csv found anywhere under uk/data/about_pages/ "
-            "(any constituency or ward's about-scrape helps every other area, "
-            "not just its own) and pass a matched group's text to the LLM as "
+            "On by default — this flag is now a no-op kept for old scripts/"
+            "muscle memory, use --no-context to opt out instead. Loads a "
+            "global, URL-keyed cache of every group's About-page text from "
+            "every *_about.csv found anywhere under uk/data/about_pages/ (any "
+            "constituency or ward's about-scrape helps every other area, not "
+            "just its own) and passes a matched group's text to the LLM as "
             "extra context for the relevance assessment."
         ),
     )
@@ -671,7 +693,7 @@ def main():
         min_members=args.min_members,
         min_posts_a_month=args.min_posts_a_month,
         force_descriptions=args.force,
-        use_context=args.context,
+        use_context=not args.no_context,
         use_about=args.about,
         about_limit=args.about_limit,
     )

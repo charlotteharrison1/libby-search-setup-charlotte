@@ -1,0 +1,23 @@
+[
+  {
+    "id": "f26348ea16684a04a573c42b7c09d3c0",
+    "action_id": "prep_bulk",
+    "slug": null,
+    "params": {
+      "force": false,
+      "names": [
+        "Arbroath and Broughty Ferry",
+        "Argyll, Bute and South Lochaber",
+        "Arundel and South Downs",
+        "Ashfield",
+        "Ashford"
+      ]
+    },
+    "label": "Bulk prep (Pick 5)",
+    "status": "running",
+    "added_at": 1789401911.745684,
+    "started_at": 1789401911.841642,
+    "finished_at": null,
+    "exit_code": null
+  }
+]

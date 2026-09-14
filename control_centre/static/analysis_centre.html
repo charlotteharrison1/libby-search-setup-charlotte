@@ -1,0 +1,580 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Libby Analysis Centre</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --blue: #4d8dee;
+    --blue-dim: #6fa3ef;
+    --blue-glow: rgba(77, 141, 238, 0.25);
+    --accent: #e8836a;
+    --ink: #e9eefb;
+    --muted: #90a4c9;
+    --border: #1e2e4d;
+    --border-bright: #2c4573;
+    --card: #0e1830;
+    --bg: #070c18;
+    --bg2: #0b1428;
+    --font-serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scrollbar-color: var(--border-bright) var(--bg); }
+  body {
+    font-family: var(--font-ui);
+    font-size: 15px;
+    margin: 0; padding: 28px 32px 60px;
+    background:
+      linear-gradient(rgba(77,141,238,.02) 1px, transparent 1px) 0 0 / 100% 26px,
+      radial-gradient(circle at 15% -10%, rgba(77,141,238,.08), transparent 45%),
+      var(--bg);
+    color: var(--ink);
+    line-height: 1.6;
+  }
+  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; flex-wrap: wrap; }
+  h1 {
+    font-family: var(--font-serif);
+    font-size: 25px; margin: 0; color: var(--ink); font-weight: 700; letter-spacing: .01em;
+  }
+  h1 .accent { color: var(--blue); }
+  .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 26px; }
+  .tab-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    color: var(--blue-dim); font-size: 13px; font-weight: 600; font-family: var(--font-ui);
+    text-decoration: none; border: 1px solid var(--border-bright); border-radius: 7px;
+    padding: 7px 16px; background: var(--card);
+  }
+  .tab-link:hover { color: var(--blue); border-color: var(--blue); background: rgba(77,141,238,.08); }
+  .tab-link .arrow { font-size: 11px; }
+  section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 22px 24px; margin-bottom: 20px;
+    box-shadow: 0 0 0 1px rgba(77,141,238,.02), 0 14px 34px rgba(0,0,0,.45);
+  }
+  h2 {
+    font-family: var(--font-serif);
+    font-size: 18px; color: var(--ink); margin: 0 0 6px; font-weight: 700;
+  }
+  .methodology { color: var(--muted); font-size: 13px; margin: 0 0 18px; max-width: 780px; }
+  .methodology code {
+    font-family: var(--font-mono); font-size: 12px; background: var(--bg2);
+    padding: 1px 5px; border-radius: 3px; color: var(--blue-dim);
+  }
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  select {
+    font-size: 13.5px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg2); color: var(--ink); font-family: inherit; min-width: 260px;
+  }
+  select:focus { outline: none; border-color: var(--blue-dim); box-shadow: 0 0 0 3px var(--blue-glow); }
+  .btn-secondary {
+    background: transparent; color: var(--blue-dim); border: 1px solid var(--border-bright);
+    border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600;
+    font-family: var(--font-ui);
+  }
+  .btn-secondary:hover { border-color: var(--blue); color: var(--blue); background: rgba(77,141,238,.08); }
+  .stat-badge { font-size: 12px; color: var(--muted); font-family: var(--font-mono); }
+  .summary-cards { display: flex; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
+  .summary-card {
+    flex: 1; min-width: 130px; background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 7px; padding: 14px 16px;
+  }
+  .summary-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-family: var(--font-mono); }
+  .summary-card .value { font-family: var(--font-serif); font-size: 26px; font-weight: 700; color: var(--ink); margin-top: 4px; }
+  .summary-card.accent .value { color: var(--accent); }
+  .summary-card.blue .value { color: var(--blue-dim); }
+  .pie-layout { display: flex; gap: 36px; align-items: center; flex-wrap: wrap; }
+  .pie-svg { flex-shrink: 0; }
+  .pie-svg path { stroke: var(--card); stroke-width: 1.5; cursor: default; transition: opacity .12s; }
+  .pie-svg path:hover { opacity: .8; }
+  .legend { flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 8px; }
+  .legend-row { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 10px; font-size: 13.5px; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 3px; }
+  .legend-label { color: var(--ink); }
+  .legend-count { font-family: var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .legend-pct { font-family: var(--font-mono); color: var(--accent); font-weight: 700; min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin-bottom: 22px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  th {
+    font-family: var(--font-mono);
+    color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: .05em; background: var(--bg2);
+  }
+  td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  td.rate { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  tbody tr:hover { background: rgba(77,141,238,.05); }
+  .bar-chart { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row { display: grid; grid-template-columns: 200px 1fr 70px; align-items: center; gap: 12px; }
+  .bar-label { font-size: 13px; color: var(--ink); text-align: right; }
+  .bar-track { background: var(--bg2); border-radius: 4px; height: 22px; overflow: hidden; border: 1px solid var(--border); }
+  .bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--blue-dim), var(--accent));
+    border-radius: 3px 0 0 3px;
+  }
+  .bar-value { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+  .scatter-wrap { margin-top: 22px; }
+  .scatter-title {
+    font-family: var(--font-serif); font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 10px;
+  }
+  .scatter-svg { max-width: 100%; }
+  .scatter-svg .axis-line { stroke: var(--border-bright); stroke-width: 1; }
+  .scatter-svg .grid-line { stroke: var(--border); stroke-width: 1; }
+  .scatter-svg .axis-label { fill: var(--muted); font-size: 11px; font-family: var(--font-mono); }
+  .scatter-svg .axis-title { fill: var(--muted); font-size: 12px; font-family: var(--font-ui); }
+  .scatter-svg circle { stroke: var(--card); stroke-width: 1; fill-opacity: .8; cursor: default; }
+  .scatter-svg circle:hover { fill-opacity: 1; stroke: var(--ink); }
+  .scatter-legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px; }
+  .scatter-legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink); }
+  .scatter-legend-swatch { width: 11px; height: 11px; border-radius: 50%; }
+  .warning {
+    margin-top: 16px; padding: 12px 16px; border: 1px dashed var(--border-bright);
+    border-radius: 6px; background: var(--bg2); color: var(--muted); font-size: 13px;
+  }
+  .warning strong { color: var(--accent); }
+  .empty { color: var(--muted); font-style: italic; padding: 20px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="accent">&sect;</span> Libby Analysis Centre</h1>
+  <a class="tab-link" href="/" target="_blank">Control centre <span class="arrow">↗</span></a>
+  <a class="tab-link" href="/group-log" target="_blank">Group log <span class="arrow">↗</span></a>
+</header>
+<div class="sub">Cross-referencing group_log.csv against external reference data — exploratory only, never feeds back into the pipeline.</div>
+
+<section>
+  <h2>Why groups get rejected</h2>
+  <p class="methodology">
+    Every non-accepted row in <code>group_log.csv</code>, broken down by the stage that rejected it. Defaults to every
+    area combined — pick one from the dropdown to see just its breakdown instead.
+  </p>
+  <div class="toolbar">
+    <select id="regionSelect"></select>
+    <button class="btn-secondary" id="reasonsRefreshBtn" type="button">Refresh</button>
+  </div>
+  <div id="reasonsContent"></div>
+</section>
+
+<section>
+  <h2>Private groups by area type</h2>
+  <p class="methodology">
+    Every group in <code>group_log.csv</code> is matched to a rural/urban classification from mySociety's
+    UK Composite Urban Rural Classification (<code>uk/data/reference/rural_index.json</code>) — constituencies matched
+    directly by name, wards matched via their parent local authority (the index has no ward-level classification of
+    its own). "Private" means eliminated at the <code>public_filter</code> stage — not marked public at scrape time.
+    Shown as a <strong>rate</strong> (private eliminations &divide; all groups considered for that area type), not a raw
+    count, since urban areas are searched far more heavily than rural ones and a raw count would just track search
+    volume rather than anything about the areas themselves.
+  </p>
+  <div class="toolbar">
+    <button class="btn-secondary" id="ruralRefreshBtn" type="button">Refresh</button>
+    <span class="stat-badge" id="ruralStatBadge"></span>
+  </div>
+  <div id="ruralContent"></div>
+</section>
+
+<section>
+  <h2>Group counts &amp; activity by area type</h2>
+  <p class="methodology">
+    Only <strong>accepted</strong> groups (the ones that actually made a final <code>groups_*.csv</code>) — how many
+    an area type has, and how active they are, is naturally about the groups that made the list, not every candidate
+    considered. Uses the same rural/urban classification as the section above. Member count and posting activity are
+    only recorded for groups processed since that data started being tracked — an older, not-yet-reprocessed area
+    still counts towards the group totals below but is excluded from the averages, rather than dragging them towards
+    zero.
+  </p>
+  <div class="toolbar">
+    <button class="btn-secondary" id="statsRefreshBtn" type="button">Refresh</button>
+    <span class="stat-badge" id="statsStatBadge"></span>
+  </div>
+  <div id="statsContent"></div>
+</section>
+
+<script>
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => (
+    {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]
+  ));
+}
+
+// ── Section 1: Why groups get rejected (pie chart + region dropdown) ──────
+
+// Friendly labels for group_log.csv's `stage` column — see
+// uk.pipeline.AUTO_FILTER_STAGES for the canonical list of what "stage" can
+// be. Rows written before the `stage` column existed have none — bucketed
+// as "Other / unspecified" rather than silently dropped.
+const STAGE_LABELS = {
+  public_filter: "Not marked public",
+  dedupe: "Duplicate group",
+  locality_filter: "Locality too broad",
+  buy_sell: "Buy/sell/marketplace",
+  activity_filter: "Low posting activity",
+  members_filter: "Too few members",
+  church_heuristic: "Church-name heuristic",
+  ai_assessment: "AI: not relevant",
+};
+const PIE_PALETTE = ["#4d8dee", "#e8836a", "#7fd1c9", "#c792ea", "#f2c14e", "#6fa3ef", "#e05d6f", "#8fd694", "#90a4c9"];
+
+let GROUP_LOG_ROWS = [];
+
+function stageLabel(stage) {
+  return STAGE_LABELS[stage] || "Other / unspecified";
+}
+
+function polarToCartesian(cx, cy, r, angleDeg) {
+  const a = (angleDeg - 90) * Math.PI / 180;
+  return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+}
+
+function arcPath(cx, cy, r, startAngle, endAngle) {
+  if (endAngle - startAngle >= 359.999) endAngle = startAngle + 359.999; // full circle needs 2 arcs, avoid the edge case
+  const start = polarToCartesian(cx, cy, r, endAngle);
+  const end = polarToCartesian(cx, cy, r, startAngle);
+  const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
+  return `M ${cx} ${cy} L ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r} ${r} 0 ${largeArc} 0 ${end.x.toFixed(2)} ${end.y.toFixed(2)} Z`;
+}
+
+// Fixed, not pulled from PIE_PALETTE — "Accepted" needs to read as
+// unambiguously positive and stay the same color regardless of how many
+// rejection-reason slices happen to be present.
+const ACCEPTED_COLOR = "#5fd68a";
+
+function computeRejectionStats(rows) {
+  const total = rows.length;
+  const accepted = rows.filter(r => r.accepted === "Y").length;
+  const rejected = total - accepted;
+
+  const counts = new Map();
+  rows.forEach(r => {
+    if (r.accepted === "Y") return;
+    const label = stageLabel(r.stage);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  const reasons = Array.from(counts, ([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count);
+
+  // Whole-pie breakdown: Accepted first (fixed color, see ACCEPTED_COLOR),
+  // then every rejection reason — this is what the pie chart itself uses,
+  // so it represents the full group population, not just the rejects.
+  const breakdown = [];
+  if (accepted > 0) breakdown.push({ label: "Accepted", count: accepted, color: ACCEPTED_COLOR });
+  reasons.forEach((r, i) => breakdown.push({ ...r, color: PIE_PALETTE[i % PIE_PALETTE.length] }));
+
+  return { total, accepted, rejected, breakdown };
+}
+
+function renderReasons() {
+  const content = document.getElementById("reasonsContent");
+  const region = document.getElementById("regionSelect").value;
+  const rows = region ? GROUP_LOG_ROWS.filter(r => `${r.area_name} ${r.area_type}` === region) : GROUP_LOG_ROWS;
+
+  const stats = computeRejectionStats(rows);
+
+  if (stats.total === 0) {
+    content.innerHTML = `<div class="empty">No data for this selection.</div>`;
+    return;
+  }
+
+  const acceptRate = stats.total ? (stats.accepted / stats.total * 100) : 0;
+  const cards = `
+    <div class="summary-cards">
+      <div class="summary-card"><div class="label">Total groups</div><div class="value">${stats.total.toLocaleString()}</div></div>
+      <div class="summary-card blue"><div class="label">Accepted</div><div class="value">${stats.accepted.toLocaleString()}</div></div>
+      <div class="summary-card accent"><div class="label">Rejected</div><div class="value">${stats.rejected.toLocaleString()}</div></div>
+      <div class="summary-card"><div class="label">Acceptance rate</div><div class="value">${acceptRate.toFixed(1)}%</div></div>
+    </div>`;
+
+  const cx = 110, cy = 110, r = 100;
+  let angle = 0;
+  const slices = stats.breakdown.map(s => {
+    const sweep = (s.count / stats.total) * 360;
+    const path = arcPath(cx, cy, r, angle, angle + sweep);
+    angle += sweep;
+    return { ...s, path };
+  });
+
+  const svg = `
+    <svg class="pie-svg" width="220" height="220" viewBox="0 0 220 220">
+      ${slices.map(s => `<path d="${s.path}" fill="${s.color}"><title>${escapeHtml(s.label)}: ${s.count} (${(s.count / stats.total * 100).toFixed(1)}%)</title></path>`).join("")}
+    </svg>`;
+
+  const legend = `
+    <div class="legend">
+      ${slices.map(s => `
+        <div class="legend-row">
+          <div class="legend-swatch" style="background:${s.color}"></div>
+          <div class="legend-label">${escapeHtml(s.label)}</div>
+          <div class="legend-count">${s.count.toLocaleString()}</div>
+          <div class="legend-pct">${(s.count / stats.total * 100).toFixed(1)}%</div>
+        </div>
+      `).join("")}
+    </div>`;
+
+  content.innerHTML = cards + `<div class="pie-layout">${svg}${legend}</div>`;
+}
+
+function populateRegionSelect() {
+  const select = document.getElementById("regionSelect");
+  const byKey = new Map();
+  GROUP_LOG_ROWS.forEach(r => {
+    if (!r.area_name) return;
+    const key = `${r.area_name} ${r.area_type}`;
+    if (!byKey.has(key)) byKey.set(key, { name: r.area_name, type: r.area_type });
+  });
+  const areas = Array.from(byKey.entries()).sort((a, b) => a[1].name.localeCompare(b[1].name));
+
+  const current = select.value;
+  select.innerHTML = `<option value="">All areas</option>` +
+    areas.map(([key, a]) => `<option value="${escapeHtml(key)}">${escapeHtml(a.name)} (${escapeHtml(a.type)})</option>`).join("");
+  if (Array.from(select.options).some(o => o.value === current)) select.value = current;
+}
+
+async function loadReasons() {
+  const content = document.getElementById("reasonsContent");
+  content.innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    const res = await fetch("/api/group_log");
+    const data = await res.json();
+    GROUP_LOG_ROWS = data.rows;
+    populateRegionSelect();
+    renderReasons();
+  } catch (e) {
+    content.innerHTML = `<div class="empty">Failed to load: ${escapeHtml(String(e))}</div>`;
+  }
+}
+
+document.getElementById("regionSelect").addEventListener("change", renderReasons);
+document.getElementById("reasonsRefreshBtn").addEventListener("click", loadReasons);
+
+// ── Section 2: Private groups by area type (rural/urban) ──────────────────
+
+function renderRural(data) {
+  const content = document.getElementById("ruralContent");
+  document.getElementById("ruralStatBadge").textContent =
+    `${data.total_areas_matched} area(s) matched` +
+    (data.total_areas_unmatched ? `, ${data.total_areas_unmatched} unmatched` : "");
+
+  if (!data.rows || data.rows.length === 0) {
+    content.innerHTML = `<div class="empty">No data yet — run the pipeline on some areas first.</div>`;
+    return;
+  }
+
+  const maxRate = Math.max(...data.rows.map(r => r.private_rate));
+
+  const table = `
+    <table>
+      <thead>
+        <tr><th>Area type</th><th>Total groups</th><th>Private (not public)</th><th>Rate</th></tr>
+      </thead>
+      <tbody>
+        ${data.rows.map(r => `
+          <tr>
+            <td>${escapeHtml(r.area_type_label)}</td>
+            <td class="num">${r.total_groups.toLocaleString()}</td>
+            <td class="num">${r.private_groups.toLocaleString()}</td>
+            <td class="rate">${(r.private_rate * 100).toFixed(1)}%</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>`;
+
+  const chart = `
+    <div class="bar-chart">
+      ${data.rows.map(r => `
+        <div class="bar-row">
+          <div class="bar-label">${escapeHtml(r.area_type_label)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${maxRate ? (r.private_rate / maxRate * 100) : 0}%"></div></div>
+          <div class="bar-value">${(r.private_rate * 100).toFixed(1)}%</div>
+        </div>
+      `).join("")}
+    </div>`;
+
+  const warning = data.unmatched_areas && data.unmatched_areas.length
+    ? `<div class="warning"><strong>${data.unmatched_areas.length} area(s) excluded</strong> — could not be matched to a rural/urban classification: ${data.unmatched_areas.map(escapeHtml).join(", ")}</div>`
+    : "";
+
+  content.innerHTML = table + chart + warning;
+}
+
+async function loadRural() {
+  const content = document.getElementById("ruralContent");
+  content.innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    const res = await fetch("/api/analysis/private_by_area_type");
+    const data = await res.json();
+    renderRural(data);
+  } catch (e) {
+    content.innerHTML = `<div class="empty">Failed to load: ${escapeHtml(String(e))}</div>`;
+  }
+}
+
+document.getElementById("ruralRefreshBtn").addEventListener("click", loadRural);
+
+// ── Section 3: Group counts & activity by area type ────────────────────────
+
+function fmtNum(v, decimals) {
+  return (v === null || v === undefined) ? "—" : Number(v).toLocaleString(undefined, {maximumFractionDigits: decimals ?? 0});
+}
+
+function statsTable(rows) {
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Area type</th><th>Areas</th><th>Groups</th><th>Groups/area</th>
+          <th>Avg members</th><th>Median members</th><th>Avg posts/mo</th><th>Median posts/mo</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${escapeHtml(r.area_type_label)}</td>
+            <td class="num">${fmtNum(r.num_areas)}</td>
+            <td class="num">${fmtNum(r.num_groups)}</td>
+            <td class="num">${fmtNum(r.avg_groups_per_area, 2)}</td>
+            <td class="num">${fmtNum(r.avg_members, 1)}</td>
+            <td class="num">${fmtNum(r.median_members, 1)}</td>
+            <td class="num">${fmtNum(r.avg_posts_a_month, 1)}</td>
+            <td class="num">${fmtNum(r.median_posts_a_month, 1)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>`;
+}
+
+// Same RUC labels the rural/urban section uses — fixed colors so the same
+// area type reads as the same color everywhere on the page.
+const RUC_COLORS = {
+  "Urban": "#4d8dee",
+  "Urban with rural areas": "#7fd1c9",
+  "Rural": "#e8836a",
+  "Sparse and rural": "#c792ea",
+};
+const RUC_FALLBACK_COLOR = "#90a4c9";
+
+// log1p (log(1+x)), not a plain log — member counts and especially
+// posts/month legitimately hit 0, and a plain log scale can't place 0
+// anywhere. Still compresses the huge range (tens to hundreds of
+// thousands of members) down to something a fixed-size plot can show.
+function log1pScale(value, maxValue, size) {
+  const v = Math.log1p(Math.max(0, value));
+  const m = Math.log1p(Math.max(0, maxValue)) || 1;
+  return (v / m) * size;
+}
+
+function niceTicks(maxValue, candidates) {
+  return candidates.filter(t => t === 0 || t <= maxValue * 1.05);
+}
+
+function renderScatter(data) {
+  const wrap = document.getElementById("scatterWrap");
+  const points = data.points || [];
+
+  if (points.length === 0) {
+    wrap.innerHTML = data.excluded_no_data
+      ? `<div class="empty">No plottable groups yet — ${data.excluded_no_data} accepted group(s) are missing member/activity data (they predate this being tracked); they'll appear here once their area is reprocessed.</div>`
+      : `<div class="empty">No accepted groups yet — run the pipeline on some areas first.</div>`;
+    return;
+  }
+
+  const width = 680, height = 400;
+  const marginLeft = 62, marginBottom = 44, marginTop = 16, marginRight = 16;
+  const plotW = width - marginLeft - marginRight;
+  const plotH = height - marginTop - marginBottom;
+
+  const maxMembers = Math.max(...points.map(p => p.members));
+  const maxPosts = Math.max(...points.map(p => p.posts_a_month));
+
+  const xTicks = niceTicks(maxMembers, [0, 100, 1000, 10000, 100000, 1000000]);
+  const yTicks = niceTicks(maxPosts, [0, 10, 50, 100, 500, 1000, 5000]);
+
+  const x = v => marginLeft + log1pScale(v, maxMembers, plotW);
+  const y = v => marginTop + plotH - log1pScale(v, maxPosts, plotH);
+
+  const gridLines = [
+    ...xTicks.map(t => `<line class="grid-line" x1="${x(t)}" y1="${marginTop}" x2="${x(t)}" y2="${marginTop + plotH}"></line>`),
+    ...yTicks.map(t => `<line class="grid-line" x1="${marginLeft}" y1="${y(t)}" x2="${marginLeft + plotW}" y2="${y(t)}"></line>`),
+  ].join("");
+
+  const xLabels = xTicks.map(t => `<text class="axis-label" x="${x(t)}" y="${marginTop + plotH + 18}" text-anchor="middle">${t.toLocaleString()}</text>`).join("");
+  const yLabels = yTicks.map(t => `<text class="axis-label" x="${marginLeft - 8}" y="${y(t) + 4}" text-anchor="end">${t.toLocaleString()}</text>`).join("");
+
+  const circles = points.map(p => {
+    const color = RUC_COLORS[p.area_type_label] || RUC_FALLBACK_COLOR;
+    return `<circle cx="${x(p.members).toFixed(1)}" cy="${y(p.posts_a_month).toFixed(1)}" r="4.5" fill="${color}">` +
+      `<title>${escapeHtml(p.group)} — ${escapeHtml(p.area_name)} (${escapeHtml(p.area_type_label)})\n${p.members.toLocaleString()} members, ${p.posts_a_month.toLocaleString()} posts/mo</title>` +
+      `</circle>`;
+  }).join("");
+
+  const svg = `
+    <svg class="scatter-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      ${gridLines}
+      <line class="axis-line" x1="${marginLeft}" y1="${marginTop + plotH}" x2="${marginLeft + plotW}" y2="${marginTop + plotH}"></line>
+      <line class="axis-line" x1="${marginLeft}" y1="${marginTop}" x2="${marginLeft}" y2="${marginTop + plotH}"></line>
+      ${xLabels}
+      ${yLabels}
+      <text class="axis-title" x="${marginLeft + plotW / 2}" y="${height - 4}" text-anchor="middle">Members</text>
+      <text class="axis-title" x="${-(marginTop + plotH / 2)}" y="14" text-anchor="middle" transform="rotate(-90)">Posts / month</text>
+      ${circles}
+    </svg>`;
+
+  const labelsPresent = Array.from(new Set(points.map(p => p.area_type_label))).sort();
+  const legend = `
+    <div class="scatter-legend">
+      ${labelsPresent.map(label => `
+        <div class="scatter-legend-item">
+          <div class="scatter-legend-swatch" style="background:${RUC_COLORS[label] || RUC_FALLBACK_COLOR}"></div>
+          ${escapeHtml(label)}
+        </div>
+      `).join("")}
+    </div>`;
+
+  const excludedNote = data.excluded_no_data
+    ? `<div class="warning">${data.excluded_no_data} accepted group(s) omitted — missing member/activity data (predates this being tracked).</div>`
+    : "";
+
+  wrap.innerHTML = `<div class="scatter-title">Members vs. posting activity, by area type</div>` + svg + legend + excludedNote;
+}
+
+async function loadStats() {
+  const content = document.getElementById("statsContent");
+  content.innerHTML = `<div class="empty">Loading…</div><div id="scatterWrap"></div>`;
+  try {
+    const [statsRes, pointsRes] = await Promise.all([
+      fetch("/api/analysis/group_stats_by_area_type"),
+      fetch("/api/analysis/accepted_group_points"),
+    ]);
+    const stats = await statsRes.json();
+    const points = await pointsRes.json();
+
+    document.getElementById("statsStatBadge").textContent =
+      `${stats.total_areas_matched} area(s) matched` +
+      (stats.total_areas_unmatched ? `, ${stats.total_areas_unmatched} unmatched` : "");
+
+    if (!stats.rows || stats.rows.length === 0) {
+      content.innerHTML = `<div class="empty">No accepted groups yet — run the pipeline on some areas first.</div>`;
+      return;
+    }
+
+    const warning = stats.unmatched_areas && stats.unmatched_areas.length
+      ? `<div class="warning"><strong>${stats.unmatched_areas.length} area(s) excluded</strong> — could not be matched to a rural/urban classification: ${stats.unmatched_areas.map(escapeHtml).join(", ")}</div>`
+      : "";
+
+    content.innerHTML = statsTable(stats.rows) + `<div class="scatter-wrap" id="scatterWrap"></div>` + warning;
+    renderScatter(points);
+  } catch (e) {
+    content.innerHTML = `<div class="empty">Failed to load: ${escapeHtml(String(e))}</div>`;
+  }
+}
+
+document.getElementById("statsRefreshBtn").addEventListener("click", loadStats);
+
+loadReasons();
+loadRural();
+loadStats();
+</script>
+</body>
+</html>

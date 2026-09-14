@@ -56,6 +56,9 @@ WARD_ABOUT_PAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 # Reference files — place these in uk/data/reference/ and do not modify them.
 CONSTITUENCIES_PATH = REFERENCE_DIR / "constituencies_2024.csv"
+# mySociety's UK Composite Urban Rural Classification — used by
+# uk/analysis.py for the control centre's "Analysis Centre" tab.
+RURAL_INDEX_PATH = REFERENCE_DIR / "rural_index.json"
 WARD_BOUNDARIES_PATH = WARD_REFERENCE_DIR / "WD_MAY_2026_UK_BFE.shp"
 PREVIOUS_SCRAPE_PATH = REFERENCE_DIR / "libby_list_groups_by_constituency.csv"
 PCON_MAPPING_PATH = REFERENCE_DIR / "Westminster_PCON_(2010)_to_future_Westminster_PCON_(2024)_Lookup_in_the_UK_(V2).csv"

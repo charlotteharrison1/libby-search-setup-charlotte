@@ -19,6 +19,7 @@ import shlex
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -27,19 +28,24 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from control_centre import actions, status
+from control_centre import actions, run_queue, status
 from uk.settings import GROUP_LOG_PATH
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PORT = 5151
 
+QUEUE_LOG_DIR = Path(__file__).resolve().parent / "queue_logs"
+QUEUE_LOG_DIR.mkdir(exist_ok=True)
+
 app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "static"))
 
-# Tracks the one currently-running command, if any, so /api/kill has
-# something to stop. This is a single-user local tool — one slot is enough;
-# a second run started before the first finishes just replaces the tracked
-# process (its own /api/run call still streams its own output/exit code
-# regardless of tracking).
+# Tracks the one currently-running command, if any — shared between a
+# manual /api/run and the queue worker (see _queue_worker_loop), so the two
+# can never run two processes at once, and /api/kill or /api/stdin always
+# acts on whichever is actually active. A second manual /api/run while
+# something's already running is now refused (see api_run) rather than
+# silently replacing the tracked process, now that "something else running"
+# routinely means the queue, not just a forgotten earlier click.
 _current_proc_lock = threading.Lock()
 _current_proc: subprocess.Popen | None = None
 
@@ -55,6 +61,11 @@ def group_log_page():
     # same-page view toggle — so it can stay open and be refreshed while
     # the main page is mid-run without either hiding the other.
     return send_from_directory(app.static_folder, "group_log.html")
+
+
+@app.route("/analysis-centre")
+def analysis_centre_page():
+    return send_from_directory(app.static_folder, "analysis_centre.html")
 
 
 @app.route("/api/status")
@@ -120,6 +131,57 @@ def api_recover_group():
     return jsonify({"ok": True, "message": output})
 
 
+@app.route("/api/remove_group", methods=["POST"])
+def api_remove_group():
+    """Manually remove one accepted group — the reverse of
+    /api/recover_group, same shell-out-to-a-real-script pattern."""
+    body = request.get_json(force=True) or {}
+    url = body.get("group_url")
+    area_type = body.get("area_type")
+    area_name = body.get("area_name")
+    note = body.get("note", "")
+    if not url or area_type not in ("constituency", "ward") or not area_name:
+        return jsonify({
+            "ok": False,
+            "message": "group_url, area_type ('constituency' or 'ward'), and area_name are required",
+        }), 400
+
+    cmd = [
+        "python3", "-m", "uk.remove_group",
+        "--url", url, "--area-type", area_type, "--area-name", area_name,
+    ]
+    if note:
+        cmd += ["--note", note]
+
+    try:
+        proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "message": "Removal timed out after 60s"}), 504
+
+    output = (proc.stdout + proc.stderr).strip()
+    if proc.returncode != 0:
+        return jsonify({"ok": False, "message": output or f"remove_group.py exited {proc.returncode}"}), 400
+    return jsonify({"ok": True, "message": output})
+
+
+@app.route("/api/analysis/private_by_area_type")
+def api_analysis_private_by_area_type():
+    from uk import analysis
+    return jsonify(analysis.private_groups_by_area_type())
+
+
+@app.route("/api/analysis/group_stats_by_area_type")
+def api_analysis_group_stats_by_area_type():
+    from uk import analysis
+    return jsonify(analysis.group_stats_by_area_type())
+
+
+@app.route("/api/analysis/accepted_group_points")
+def api_analysis_accepted_group_points():
+    from uk import analysis
+    return jsonify(analysis.accepted_group_points())
+
+
 def _resolve_command(body: dict) -> tuple[list[str] | None, tuple[dict, int] | None]:
     """Shared by /api/run and /api/preview: resolve the request body to an
     argv list via actions.build_command — the ONE place command-building
@@ -159,7 +221,7 @@ def api_preview():
     return jsonify({"command": shlex.join(cmd)})
 
 
-def _stream_command(cmd: list[str], cwd: Path | None = None):
+def _stream_command(cmd: list[str], cwd: Path | None = None, result: dict | None = None):
     """Generator: first line is the literal command (so the UI can show
     exactly what's running before any output arrives), then each
     stdout/stderr line as it's produced, then a final exit-code line.
@@ -168,7 +230,12 @@ def _stream_command(cmd: list[str], cwd: Path | None = None):
     /api/stdin can send it real input for the life of the run — e.g.
     run_remote_scrape's script.py, which blocks on a login-confirmation
     keypress. Every other action just never gets anything written to it,
-    which is harmless — none of them read stdin at all."""
+    which is harmless — none of them read stdin at all.
+
+    If `result` (a dict) is given, its "returncode" key is set once the
+    process exits (or to None if it never started) — lets a caller that
+    isn't an HTTP response (the queue worker, writing to a log file
+    instead) learn the outcome without parsing the yielded text."""
     global _current_proc
 
     yield f"$ {shlex.join(cmd)}\n\n"
@@ -181,6 +248,8 @@ def _stream_command(cmd: list[str], cwd: Path | None = None):
         )
     except FileNotFoundError as e:
         yield f"!! Could not start command: {e}\n"
+        if result is not None:
+            result["returncode"] = None
         return
 
     with _current_proc_lock:
@@ -189,6 +258,8 @@ def _stream_command(cmd: list[str], cwd: Path | None = None):
         for line in proc.stdout:
             yield line
         proc.wait()
+        if result is not None:
+            result["returncode"] = proc.returncode
         if proc.returncode is not None and proc.returncode < 0:
             yield f"\n[stopped — signal {-proc.returncode}]\n"
         else:
@@ -209,6 +280,15 @@ def api_run():
     if error:
         body, code = error
         return jsonify(body), code
+    # A pre-check, not a hard lock (the generator below is what actually
+    # claims _current_proc, and Flask doesn't start it until the response
+    # is consumed) — good enough for a single-user local tool where the
+    # realistic race is "the queue happened to pick something up between
+    # this check and your click", not concurrent clients fighting over it.
+    with _current_proc_lock:
+        busy = _current_proc is not None
+    if busy:
+        return jsonify({"error": "Another command (manual or queued) is already running — stop it first or wait."}), 409
     return Response(_stream_command(cmd), mimetype="text/plain")
 
 
@@ -253,8 +333,121 @@ def api_kill():
     return jsonify({"ok": True, "message": "Stop signal sent"})
 
 
+# ── Queue ─────────────────────────────────────────────────────────────────
+# A persisted, unattended-friendly alternative to clicking Run per area —
+# see control_centre/run_queue.py for the state management. The worker below is
+# the only thing that actually executes a queued item; it reuses
+# _stream_command exactly as a manual /api/run does, just writing the
+# output to a log file instead of an HTTP response, and only ever starts
+# something when _current_proc is free (see api_run's matching check).
+
+@app.route("/api/queue")
+def api_queue_list():
+    return jsonify({"items": run_queue.list_items(), "paused": run_queue.is_paused()})
+
+
+@app.route("/api/queue/add", methods=["POST"])
+def api_queue_add():
+    body = request.get_json(force=True) or {}
+    action_id = body.get("action_id")
+    slug = body.get("slug")
+    params = body.get("params", {})
+
+    # Same validation /api/run and /api/preview already share — a bad queue
+    # entry is rejected immediately, not discovered later by the worker.
+    cmd, error = _resolve_command({"action_id": action_id, "slug": slug, "params": params})
+    if error:
+        body_, code = error
+        return jsonify(body_), code
+
+    action_label = actions.ACTIONS[action_id][0]
+    area_label = None
+    if slug:
+        row = next((r for r in status.build_status_table() if r["slug"] == slug), None)
+        area_label = row["name"] if row else slug
+    label = f"{action_label} — {area_label}" if area_label else action_label
+
+    item = run_queue.add(action_id, slug, params, label)
+    return jsonify({"ok": True, "item": dict(item)})
+
+
+@app.route("/api/queue/remove", methods=["POST"])
+def api_queue_remove():
+    item_id = (request.get_json(force=True) or {}).get("id")
+    return jsonify({"ok": run_queue.remove(item_id)})
+
+
+@app.route("/api/queue/retry", methods=["POST"])
+def api_queue_retry():
+    item_id = (request.get_json(force=True) or {}).get("id")
+    return jsonify({"ok": run_queue.retry(item_id)})
+
+
+@app.route("/api/queue/clear_finished", methods=["POST"])
+def api_queue_clear_finished():
+    return jsonify({"ok": True, "cleared": run_queue.clear_finished()})
+
+
+@app.route("/api/queue/pause", methods=["POST"])
+def api_queue_pause():
+    run_queue.set_paused(True)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/queue/resume", methods=["POST"])
+def api_queue_resume():
+    run_queue.set_paused(False)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/queue/log/<item_id>")
+def api_queue_log(item_id):
+    log_path = QUEUE_LOG_DIR / f"{item_id}.log"
+    if not log_path.exists():
+        return jsonify({"log": ""})
+    return jsonify({"log": log_path.read_text(errors="replace")})
+
+
+def _queue_worker_loop():
+    while True:
+        time.sleep(2)
+        if run_queue.is_paused():
+            continue
+        with _current_proc_lock:
+            if _current_proc is not None:
+                continue  # a manual run or another queue item is already active
+
+        item = run_queue.next_pending()
+        if item is None:
+            continue
+
+        row = None
+        if item["slug"]:
+            row = next((r for r in status.build_status_table() if r["slug"] == item["slug"]), None)
+        try:
+            cmd = actions.build_command(item["action_id"], row, item["params"])
+        except actions.UnknownAction as e:
+            # The area's state changed since this was queued (e.g. its
+            # scrape file went away) — fail it visibly rather than looping
+            # on it forever.
+            run_queue.mark_running(item)
+            (QUEUE_LOG_DIR / f"{item['id']}.log").write_text(f"Could not build command: {e}\n")
+            run_queue.mark_finished(item, 1)
+            continue
+
+        run_queue.mark_running(item)
+        log_path = QUEUE_LOG_DIR / f"{item['id']}.log"
+        result: dict = {}
+        with open(log_path, "w") as logf:
+            for line in _stream_command(cmd, result=result):
+                logf.write(line)
+                logf.flush()
+        run_queue.mark_finished(item, result.get("returncode", 1))
+
+
 def main():
     url = f"http://127.0.0.1:{PORT}"
+    threading.Thread(target=_queue_worker_loop, daemon=True).start()
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     print(f"Libby Control Centre running at {url}")
     app.run(host="127.0.0.1", port=PORT, threaded=True)

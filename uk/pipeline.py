@@ -249,7 +249,10 @@ def reconstruct_constituency_candidates(pcon24nm: str, input_path: Path | None =
 # consolidated into GROUP_LOG_PATH, upserted per area (see
 # _upsert_group_log) so reprocessing an area replaces its rows rather than
 # duplicating or leaving stale copies behind.
-GROUP_LOG_COLUMNS = ["group", "group_url", "area_type", "area_name", "accepted", "stage", "reason"]
+GROUP_LOG_COLUMNS = [
+    "group", "group_url", "area_type", "area_name", "accepted", "stage", "reason",
+    "members", "posts_a_month",
+]
 
 # Every non-"kept" stage a row can be dropped at, grouped for the
 # control centre's "Auto-filtered vs AI-eliminated" split — every stage
@@ -318,19 +321,32 @@ def _apply_ai_verdict(
     return after, reason_by_row_id
 
 
-def _load_overrides_by_area(area_type: str) -> dict[str, set[str]]:
-    """area_name -> set of manually-recovered group urls (see
-    uk/recover_group.py), for the given area_type. Loaded once per run —
-    same pattern as the About-context cache."""
+def _load_overrides_by_area(area_type: str) -> dict[str, dict[str, set[str]]]:
+    """area_name -> {"include": {urls}, "exclude": {urls}} for the given
+    area_type — "include" from uk/recover_group.py, "exclude" from
+    uk/remove_group.py. Loaded once per run, same pattern as the
+    About-context cache. Rows recorded before the "decision" column
+    existed default to "include" — every override before uk/remove_group.py
+    existed was inherently a recovery."""
     if not GROUP_OVERRIDES_PATH.exists():
         return {}
     try:
         odf = pd.read_csv(GROUP_OVERRIDES_PATH, dtype=str, encoding="utf-8", encoding_errors="surrogatepass")
     except Exception:
-        logger.warning("Could not read %s — proceeding without recovered-group overrides", GROUP_OVERRIDES_PATH)
+        logger.warning("Could not read %s — proceeding without group overrides", GROUP_OVERRIDES_PATH)
         return {}
-    odf = odf[odf.get("area_type") == area_type]
-    return {name: set(group["group_url"]) for name, group in odf.groupby("area_name")}
+    odf = odf[odf.get("area_type") == area_type].copy()
+    if "decision" not in odf.columns:
+        odf["decision"] = "include"
+    else:
+        odf["decision"] = odf["decision"].fillna("").replace("", "include")
+    return {
+        name: {
+            "include": set(group.loc[group["decision"] == "include", "group_url"]),
+            "exclude": set(group.loc[group["decision"] == "exclude", "group_url"]),
+        }
+        for name, group in odf.groupby("area_name")
+    }
 
 
 def _missing_override_rows(
@@ -388,8 +404,44 @@ def _recovered_ledger_rows(recovered: pd.DataFrame, area_type: str, area_name: s
             "accepted": "Y",
             "stage": "recovered",
             "reason": "Manually recovered — see uk/output/group_overrides.csv",
+            "members": r.get("members"),
+            "posts_a_month": r.get("posts_a_month"),
         }
         for _, r in recovered.iterrows()
+    ]
+
+
+def _apply_exclusions(final: pd.DataFrame, exclude_urls: set[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split `final` into (kept, excluded) by exclude_urls — the
+    manually-removed groups (see uk/remove_group.py) that must stay
+    removed even though normal filtering would otherwise have accepted
+    them this run. The two output sets are disjoint by construction from
+    _load_overrides_by_area (a later uk.recover_group call for the same
+    url replaces an earlier uk.remove_group one, and vice versa), so this
+    never needs to reconcile the same url appearing in both."""
+    if not exclude_urls:
+        return final, final.iloc[0:0]
+    mask = final["url"].isin(exclude_urls)
+    return final[~mask].copy(), final[mask].copy()
+
+
+def _excluded_ledger_rows(excluded: pd.DataFrame, area_type: str, area_name: str) -> list[dict]:
+    """group_log records (accepted="N", stage="manually_excluded") for
+    rows dropped by _apply_exclusions — see uk/remove_group.py for how a
+    group gets into group_overrides.csv as an exclusion."""
+    return [
+        {
+            "group": r.get("name"),
+            "group_url": r.get("url"),
+            "area_type": area_type,
+            "area_name": area_name,
+            "accepted": "N",
+            "stage": "manually_excluded",
+            "reason": "Manually removed — see uk/output/group_overrides.csv",
+            "members": r.get("members"),
+            "posts_a_month": r.get("posts_a_month"),
+        }
+        for _, r in excluded.iterrows()
     ]
 
 
@@ -432,6 +484,8 @@ def _dropped_rows(
             "accepted": "N",
             "stage": stage,
             "reason": row_reason,
+            "members": r.get("members"),
+            "posts_a_month": r.get("posts_a_month"),
         })
     return records
 
@@ -474,6 +528,8 @@ def _kept_rows(
             "accepted": "Y",
             "stage": "kept",
             "reason": reason,
+            "members": r.get("members"),
+            "posts_a_month": r.get("posts_a_month"),
         })
     return records
 
@@ -629,7 +685,7 @@ def run(
     constituency_name: str | None = None,
     stop_before_ai_assessment: bool = False,
     input_path: Path | None = None,
-    use_context: bool = False,
+    use_context: bool = True,
     use_about: bool = False,
     about_limit: int = local_about_scraper.DEFAULT_MAX_GROUPS,
     force: bool = False,
@@ -935,13 +991,18 @@ def run(
 
         ledger += _kept_rows(final_c, "constituency", pcon24nm, about_reassessed_ids)
 
-        recovered = _missing_override_rows(
-            final_c, new_groups_c, overrides_by_constituency.get(pcon24nm, set()), pcon24nm=pcon24nm,
-        )
+        area_overrides = overrides_by_constituency.get(pcon24nm, {"include": set(), "exclude": set()})
+
+        recovered = _missing_override_rows(final_c, new_groups_c, area_overrides["include"], pcon24nm=pcon24nm)
         if not recovered.empty:
             logger.info("  Re-applied %d manually-recovered group(s) for %s", len(recovered), pcon24nm)
             ledger += _recovered_ledger_rows(recovered, "constituency", pcon24nm)
             final_c = pd.concat([final_c, recovered], ignore_index=True)
+
+        final_c, excluded = _apply_exclusions(final_c, area_overrides["exclude"])
+        if not excluded.empty:
+            logger.info("  Re-applied %d manually-removed group(s) for %s", len(excluded), pcon24nm)
+            ledger += _excluded_ledger_rows(excluded, "constituency", pcon24nm)
 
         _upsert_group_log("constituency", pcon24nm, ledger)
 
@@ -1057,13 +1118,26 @@ def main():
         help="Path to a scraped CSV file to process directly, instead of the master file.",
     )
     parser.add_argument(
+        "--no-context",
+        action="store_true",
+        help=(
+            "Skip loading the global About-context cache (on by default — see "
+            "--context's old help text below for what it does). Only useful "
+            "for a quick name-only assessment; leaving About-context on is "
+            "free (no scraping, no extra LLM cost) so there's no real reason "
+            "to normally disable it."
+        ),
+    )
+    parser.add_argument(
         "--context",
         action="store_true",
         help=(
-            "Load a global, URL-keyed cache of every group's About-page text "
-            "from every *_about.csv found anywhere under uk/data/about_pages/ "
-            "(any constituency or ward's about-scrape helps every other area, "
-            "not just its own) and pass a matched group's text to the LLM as "
+            "On by default — this flag is now a no-op kept for old scripts/"
+            "muscle memory, use --no-context to opt out instead. Loads a "
+            "global, URL-keyed cache of every group's About-page text from "
+            "every *_about.csv found anywhere under uk/data/about_pages/ (any "
+            "constituency or ward's about-scrape helps every other area, not "
+            "just its own) and passes a matched group's text to the LLM as "
             "extra context for the relevance assessment."
         ),
     )
@@ -1105,7 +1179,7 @@ def main():
         constituency_name=args.constituency,
         stop_before_ai_assessment=args.stop_before_ai_assessment,
         input_path=Path(args.input) if args.input else None,
-        use_context=args.context,
+        use_context=not args.no_context,
         use_about=args.about,
         about_limit=args.about_limit,
         force=args.force,

@@ -43,7 +43,7 @@ from uk.settings import CLACTON_GROUPS_DIR, CLACTON_INPUTS_DIR, GROUP_LOG_PATH, 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
 logger = logging.getLogger(__name__)
 
-OVERRIDE_COLUMNS = ["group_url", "area_type", "area_name", "note", "recovered_at"]
+OVERRIDE_COLUMNS = ["group_url", "area_type", "area_name", "decision", "note", "updated_at"]
 
 
 class RecoveryError(Exception):
@@ -54,22 +54,44 @@ class RecoveryError(Exception):
 def _target_file(area_type: str, area_name: str, ward_name: str | None) -> Path | None:
     """Whichever of the promoted (Clacton-etc/groups/) or staged
     (Clacton-etc/inputs/...) location currently holds this area's output
-    file — promoted takes priority, since that's the more "final" state.
-    None if the area has neither yet (nothing to recover into)."""
+    file. None if the area has neither yet.
+
+    Normally only one of the two exists at a time — promotion is meant to
+    be a move, not a copy. But reprocessing an already-promoted area
+    (uk.pipeline --force, or any ward run) re-stages a fresh result
+    without touching the old promoted copy, so the two can genuinely
+    diverge — the promoted file then silently reflects a superseded
+    assessment. When both exist, the newer one (by mtime) is used and the
+    divergence is logged loudly rather than silently trusting "promoted"
+    as more final, which isn't a safe assumption once this can happen."""
     filename_base = ward_name if area_type == "ward" else area_name
     promoted = CLACTON_GROUPS_DIR / f"groups_{filename_base}.csv"
-    if promoted.exists():
-        return promoted
     if area_type == "ward":
         staged = CLACTON_INPUTS_DIR / "wards" / f"groups_{filename_base}.csv"
     else:
         staged = CLACTON_INPUTS_DIR / f"groups_{filename_base}.csv"
-    if staged.exists():
+
+    promoted_exists, staged_exists = promoted.exists(), staged.exists()
+    if promoted_exists and staged_exists:
+        newer, older = (staged, promoted) if staged.stat().st_mtime > promoted.stat().st_mtime else (promoted, staged)
+        logger.warning(
+            "%r has BOTH a promoted and a staged groups file, and they differ in age — "
+            "using the newer one (%s). The older one (%s) looks stale (probably promoted, "
+            "then the area got reprocessed) — you may want to re-promote to replace it.",
+            area_name, newer, older,
+        )
+        return newer
+    if promoted_exists:
+        return promoted
+    if staged_exists:
         return staged
     return None
 
 
-def _update_group_log_row(area_type: str, area_name: str, url: str, name: str, note: str) -> None:
+def _update_group_log_row(
+    area_type: str, area_name: str, url: str, name: str, note: str,
+    members=None, posts_a_month=None,
+) -> None:
     """Targeted update — replaces just this one (area_type, area_name, url)
     row, unlike uk.pipeline._upsert_group_log's whole-area replace (which
     would wipe out every other group's log entry for this area)."""
@@ -83,18 +105,31 @@ def _update_group_log_row(area_type: str, area_name: str, url: str, name: str, n
     new_row = pd.DataFrame([{
         "group": name, "group_url": url, "area_type": area_type, "area_name": area_name,
         "accepted": "Y", "stage": "recovered", "reason": reason,
+        "members": members, "posts_a_month": posts_a_month,
     }])
     df = pd.concat([df, new_row], ignore_index=True).reindex(columns=GROUP_LOG_COLUMNS, fill_value="")
     df.to_csv(GROUP_LOG_PATH, index=False, encoding="utf-8", errors="surrogatepass")
 
 
-def _append_override(area_type: str, area_name: str, url: str, note: str) -> None:
+def _append_override(area_type: str, area_name: str, url: str, note: str, decision: str = "include") -> None:
+    """decision is "include" (uk.recover_group's own use) or "exclude"
+    (uk.remove_group) — a later call for the same (area_type, area_name,
+    url) replaces any earlier one, so recovering something previously
+    removed (or vice versa) cleanly flips the decision rather than leaving
+    two contradictory rows."""
     row = {
         "group_url": url, "area_type": area_type, "area_name": area_name,
-        "note": note, "recovered_at": datetime.now(timezone.utc).isoformat(),
+        "decision": decision, "note": note, "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     if GROUP_OVERRIDES_PATH.exists():
         df = pd.read_csv(GROUP_OVERRIDES_PATH, dtype=str, encoding="utf-8", encoding_errors="surrogatepass").fillna("")
+        # Migrate pre-"decision"-column rows in place: every override ever
+        # recorded before uk.remove_group existed was inherently a recovery.
+        if "updated_at" not in df.columns and "recovered_at" in df.columns:
+            df = df.rename(columns={"recovered_at": "updated_at"})
+        if "decision" not in df.columns:
+            df["decision"] = ""
+        df["decision"] = df["decision"].replace("", "include")
         mask = (df["area_type"] == area_type) & (df["area_name"] == area_name) & (df["group_url"] == url)
         df = df[~mask]
     else:
@@ -149,7 +184,10 @@ def recover(area_type: str, area_name: str, url: str, note: str = "") -> dict:
     existing = existing.reindex(columns=FINAL_COLUMNS)
     existing.to_csv(target, index=False, encoding="utf-8", errors="surrogatepass")
 
-    _update_group_log_row(area_type, area_name, url, name, note)
+    _update_group_log_row(
+        area_type, area_name, url, name, note,
+        members=row.get("members"), posts_a_month=row.get("posts_a_month"),
+    )
     _append_override(area_type, area_name, url, note)
 
     logger.info("Recovered %r into %s (backup at %s)", name, target, backup_path)

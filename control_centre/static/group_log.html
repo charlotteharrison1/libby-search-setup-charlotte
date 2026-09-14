@@ -80,6 +80,13 @@
   }
   .recover-btn:hover:not(:disabled) { background: rgba(255,180,84,.12); }
   .recover-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .remove-btn {
+    background: transparent; color: var(--red); border: 1px solid var(--red);
+    border-radius: 5px; padding: 3px 10px; cursor: pointer; font-size: 11.5px; font-weight: 700;
+    font-family: var(--font-ui);
+  }
+  .remove-btn:hover:not(:disabled) { background: rgba(255,122,134,.12); }
+  .remove-btn:disabled { opacity: .5; cursor: not-allowed; }
   .area-picker { position: relative; }
   .area-picker input { width: 260px; padding-right: 30px; }
   .area-picker::after {
@@ -114,6 +121,8 @@
   .table-wrap { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; border-radius: 8px; border: 1px solid var(--border); background: var(--card); }
   td.reason-cell { white-space: normal; color: var(--ink); overflow: visible; text-overflow: clip; }
   td.outcome-cell { font-weight: 700; }
+  .url-link { color: var(--neon-dim); text-decoration: none; }
+  .url-link:hover { color: var(--neon); text-decoration: underline; }
   .outcome-accepted { color: var(--neon); }
   .outcome-auto { color: var(--amber); }
   .outcome-ai { color: var(--red); }
@@ -130,6 +139,7 @@
 <header>
   <h1>&gt; group log</h1>
   <a class="tab-link" href="/" target="_blank">Control centre <span class="arrow">↗</span></a>
+  <a class="tab-link" href="/analysis-centre" target="_blank">Analysis centre <span class="arrow">↗</span></a>
 </header>
 <div class="sub">
   Every group either pipeline has considered, accepted or not, and why — refreshes independently of any run in the control centre.
@@ -160,11 +170,12 @@
 <div class="table-wrap">
   <table id="groupLogTable">
     <colgroup>
-      <col style="width: 20%">
-      <col style="width: 10%">
-      <col style="width: 10%">
-      <col style="width: 16%">
-      <col style="width: 34%">
+      <col style="width: 15%">
+      <col style="width: 15%">
+      <col style="width: 8%">
+      <col style="width: 8%">
+      <col style="width: 14%">
+      <col style="width: 30%">
       <col style="width: 10%">
     </colgroup>
     <thead>
@@ -209,6 +220,7 @@ const OUTCOME_STYLE = {
 // sized to fit the viewport (see the <colgroup>), never wider than it.
 const GROUP_LOG_COLUMNS = [
   {key: "group", label: "Group"},
+  {key: "group_url", label: "URL"},
   {key: "outcome", label: "Outcome"},
   {key: "area_type", label: "Area type"},
   {key: "area_name", label: "Area"},
@@ -270,14 +282,17 @@ function renderGroupLog() {
     const style = OUTCOME_STYLE[r.outcome];
     // title= on the truncated cells so the full text is still reachable
     // (hover) even when ellipsis cuts it off — group/area names can run long.
-    // "Recover" only makes sense for a rejected group — an already-accepted
-    // row (including one recovered earlier) just shows a dash instead.
+    // Accepted -> Remove (the reverse: uk/remove_group.py); rejected -> Recover.
     const action = r.accepted === "Y"
-      ? `<span class="hint">—</span>`
+      ? `<button class="remove-btn" data-url="${escapeHtml(r.group_url)}" data-area-type="${escapeHtml(r.area_type)}" data-area-name="${escapeHtml(r.area_name)}" type="button">Remove</button>`
       : `<button class="recover-btn" data-url="${escapeHtml(r.group_url)}" data-area-type="${escapeHtml(r.area_type)}" data-area-name="${escapeHtml(r.area_name)}" type="button">Recover</button>`;
+    const urlCell = r.group_url
+      ? `<a class="url-link" href="${escapeHtml(r.group_url)}" target="_blank" title="${escapeHtml(r.group_url)}">${escapeHtml(r.group_url)}</a>`
+      : "";
     return `
     <tr class="${style.rowClass}">
       <td title="${escapeHtml(r.group)}">${escapeHtml(r.group)}</td>
+      <td class="url-cell">${urlCell}</td>
       <td class="outcome-cell ${style.cellClass}">${style.label}</td>
       <td title="${escapeHtml(r.area_type)}">${escapeHtml(r.area_type)}</td>
       <td title="${escapeHtml(r.area_name)}">${escapeHtml(r.area_name)}</td>
@@ -318,9 +333,41 @@ async function recoverGroup(button) {
   }
 }
 
+async function removeGroup(button) {
+  const {url, areaType, areaName} = button.dataset;
+  const note = prompt(`Remove this group from ${areaName}?\n\nOptional note (or leave blank):`);
+  if (note === null) return; // Cancel — abort, don't call the API at all
+
+  button.disabled = true;
+  button.textContent = "Removing…";
+  try {
+    const res = await fetch("/api/remove_group", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({group_url: url, area_type: areaType, area_name: areaName, note}),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert(`Removal failed: ${data.message}`);
+      button.disabled = false;
+      button.textContent = "Remove";
+      return;
+    }
+    // Re-fetch rather than patch the row in place — the source of truth
+    // (group_log.csv) just changed on disk and this keeps the table honest.
+    await loadGroupLog();
+  } catch (e) {
+    alert(`Removal request failed: ${e}`);
+    button.disabled = false;
+    button.textContent = "Remove";
+  }
+}
+
 document.getElementById("groupLogBody").addEventListener("click", (e) => {
-  const btn = e.target.closest(".recover-btn");
-  if (btn) recoverGroup(btn);
+  const recoverBtn = e.target.closest(".recover-btn");
+  if (recoverBtn) { recoverGroup(recoverBtn); return; }
+  const removeBtn = e.target.closest(".remove-btn");
+  if (removeBtn) removeGroup(removeBtn);
 });
 
 // ── Area picker — same browse/search pattern as the main control centre's
