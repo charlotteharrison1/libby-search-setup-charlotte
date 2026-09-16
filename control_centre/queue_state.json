@@ -14,9 +14,570 @@
       ]
     },
     "label": "Bulk prep (Pick 5)",
-    "status": "running",
+    "status": "done",
     "added_at": 1789401911.745684,
     "started_at": 1789401911.841642,
+    "finished_at": 1789402505.021996,
+    "exit_code": 0
+  },
+  {
+    "id": "e7816cd9388a4ada841b450c69027bec",
+    "action_id": "run_pipeline",
+    "slug": "bloxwich_east_and_blakenall_heath",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Bloxwich East & Blakenall Heath",
+    "status": "done",
+    "added_at": 1789480302.076886,
+    "started_at": 1789480303.433533,
+    "finished_at": 1789480308.0365849,
+    "exit_code": 0
+  },
+  {
+    "id": "b9f0961cd82c4d9aa82ee73158ab0340",
+    "action_id": "run_pipeline",
+    "slug": "bolsover",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Bolsover",
+    "status": "done",
+    "added_at": 1789480307.831716,
+    "started_at": 1789480310.051283,
+    "finished_at": 1789480349.9037282,
+    "exit_code": 0
+  },
+  {
+    "id": "bcb119b252b449fdae48873382dae3db",
+    "action_id": "run_pipeline",
+    "slug": "cardiff_east",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Cardiff East",
+    "status": "done",
+    "added_at": 1789480312.401152,
+    "started_at": 1789480351.922674,
+    "finished_at": 1789480450.442753,
+    "exit_code": 0
+  },
+  {
+    "id": "d5e54d6855ae44bcb9e3bf0335c5e588",
+    "action_id": "run_pipeline",
+    "slug": "cardiff_north",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Cardiff North",
+    "status": "done",
+    "added_at": 1789480317.1686158,
+    "started_at": 1789480452.4671118,
+    "finished_at": 1789480508.619401,
+    "exit_code": 0
+  },
+  {
+    "id": "a632cd5f414f44b989780867e7ae55e7",
+    "action_id": "run_pipeline",
+    "slug": "chipping_barnet",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Chipping Barnet",
+    "status": "done",
+    "added_at": 1789480329.052298,
+    "started_at": 1789480510.647274,
+    "finished_at": 1789480551.468461,
+    "exit_code": 0
+  },
+  {
+    "id": "8012ea6839c64ba4a7d20bab1df12e4a",
+    "action_id": "run_pipeline",
+    "slug": "clacton",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Clacton",
+    "status": "done",
+    "added_at": 1789480333.089615,
+    "started_at": 1789480553.492835,
+    "finished_at": 1789480592.26139,
+    "exit_code": 0
+  },
+  {
+    "id": "ca9ba49d7c5947fdaf477718b8691821",
+    "action_id": "run_pipeline",
+    "slug": "corby_and_east_northamptonshire",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Corby and East Northamptonshire",
+    "status": "done",
+    "added_at": 1789480337.977545,
+    "started_at": 1789480594.290994,
+    "finished_at": 1789480692.161191,
+    "exit_code": 0
+  },
+  {
+    "id": "0ea449f24da94ea8af123bc87169960b",
+    "action_id": "run_pipeline",
+    "slug": "cricklewood",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Cricklewood",
+    "status": "done",
+    "added_at": 1789480642.0874932,
+    "started_at": 1789480694.184299,
+    "finished_at": 1789480794.625448,
+    "exit_code": 0
+  },
+  {
+    "id": "67fd53614409422aa6e8a28cfa1e95e7",
+    "action_id": "run_pipeline",
+    "slug": "derby_north",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Derby North",
+    "status": "done",
+    "added_at": 1789480647.691909,
+    "started_at": 1789480796.64348,
+    "finished_at": 1789480938.716344,
+    "exit_code": 0
+  },
+  {
+    "id": "19f2a4c2e0e14ff78d0ecfe5b39d817c",
+    "action_id": "run_pipeline",
+    "slug": "derby_south",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Derby South",
+    "status": "done",
+    "added_at": 1789480652.113127,
+    "started_at": 1789480940.749284,
+    "finished_at": 1789481247.489623,
+    "exit_code": 0
+  },
+  {
+    "id": "e7a6d4d0d7a648fd92d305517aaee829",
+    "action_id": "run_pipeline",
+    "slug": "earley_and_woodley",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Earley and Woodley",
+    "status": "done",
+    "added_at": 1789480655.99822,
+    "started_at": 1789481249.518643,
+    "finished_at": 1789481278.336755,
+    "exit_code": 0
+  },
+  {
+    "id": "5678392ed246434bb76a8d89aa3f3d1c",
+    "action_id": "run_pipeline",
+    "slug": "east_finchley",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 East Finchley",
+    "status": "done",
+    "added_at": 1789480661.082149,
+    "started_at": 1789481280.360791,
+    "finished_at": 1789481323.457212,
+    "exit_code": 0
+  },
+  {
+    "id": "168ac586d63a493e941acf0eaa0fb967",
+    "action_id": "run_pipeline",
+    "slug": "erewash",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Erewash",
+    "status": "done",
+    "added_at": 1789480665.860847,
+    "started_at": 1789481325.484931,
+    "finished_at": 1789481368.8730292,
+    "exit_code": 0
+  },
+  {
+    "id": "a4931acf18654bcfab8f80488e5517ef",
+    "action_id": "run_pipeline",
+    "slug": "filton_and_bradley_stoke",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Filton and Bradley Stoke",
+    "status": "done",
+    "added_at": 1789480735.7029881,
+    "started_at": 1789481370.898709,
+    "finished_at": 1789481454.6143029,
+    "exit_code": 0
+  },
+  {
+    "id": "806be3b743524c959852df5402ca027f",
+    "action_id": "run_pipeline",
+    "slug": "hampstead_and_highgate",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Hampstead and Highgate",
+    "status": "done",
+    "added_at": 1789481098.077753,
+    "started_at": 1789481456.6416378,
+    "finished_at": 1789481503.367241,
+    "exit_code": 0
+  },
+  {
+    "id": "922f4beca07a4a468d3659e243460ec1",
+    "action_id": "run_pipeline",
+    "slug": "hyndburn",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Hyndburn",
+    "status": "done",
+    "added_at": 1789481108.2656791,
+    "started_at": 1789481505.392086,
+    "finished_at": 1789481598.79458,
+    "exit_code": 0
+  },
+  {
+    "id": "adcefc955b04480384cb0e8e16e4c4d8",
+    "action_id": "run_pipeline",
+    "slug": "knowsley",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Knowsley",
+    "status": "done",
+    "added_at": 1789481113.872729,
+    "started_at": 1789481600.8181682,
+    "finished_at": 1789481636.190625,
+    "exit_code": 0
+  },
+  {
+    "id": "df5db7c92a0e47ffbc98c902976ff3bd",
+    "action_id": "run_pipeline",
+    "slug": "lincoln",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Lincoln",
+    "status": "done",
+    "added_at": 1789481118.246505,
+    "started_at": 1789481638.2171361,
+    "finished_at": 1789481655.914978,
+    "exit_code": 0
+  },
+  {
+    "id": "d0addfc8d7524fbfbe32668c50dbd5dd",
+    "action_id": "run_pipeline",
+    "slug": "livingston",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Livingston",
+    "status": "done",
+    "added_at": 1789481123.092041,
+    "started_at": 1789481657.9312088,
+    "finished_at": 1789482637.1391108,
+    "exit_code": 0
+  },
+  {
+    "id": "cd29669de5384c8a9287c725397ae484",
+    "action_id": "run_pipeline",
+    "slug": "makerfield",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Makerfield",
+    "status": "done",
+    "added_at": 1789481127.963176,
+    "started_at": 1789482639.171136,
+    "finished_at": 1789483687.744983,
+    "exit_code": 0
+  },
+  {
+    "id": "733a1ee4ddf645e0ae46580b3a54e49a",
+    "action_id": "run_pipeline",
+    "slug": "manchester_central",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Manchester Central",
+    "status": "done",
+    "added_at": 1789491051.987987,
+    "started_at": 1789491053.7738318,
+    "finished_at": 1789491221.622066,
+    "exit_code": 0
+  },
+  {
+    "id": "1be22ac6679f4fc49ff2286d3434bbb4",
+    "action_id": "run_pipeline",
+    "slug": "mansfield",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Mansfield",
+    "status": "done",
+    "added_at": 1789491060.112709,
+    "started_at": 1789491223.645637,
+    "finished_at": 1789491310.716461,
+    "exit_code": 0
+  },
+  {
+    "id": "db2f4ec8e7fc40208aeb5f4db06cb038",
+    "action_id": "run_pipeline",
+    "slug": "mid_derbyshire",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Mid Derbyshire",
+    "status": "done",
+    "added_at": 1789491065.4934359,
+    "started_at": 1789491312.745286,
+    "finished_at": 1789491415.719381,
+    "exit_code": 0
+  },
+  {
+    "id": "53f9e77d6a2345f5b582e9c50a4648fa",
+    "action_id": "run_pipeline",
+    "slug": "midlothian",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Midlothian",
+    "status": "done",
+    "added_at": 1789491071.302031,
+    "started_at": 1789491417.7703738,
+    "finished_at": 1789491428.129739,
+    "exit_code": 0
+  },
+  {
+    "id": "ebd2cdf8a81e46ddaec30384bca45a89",
+    "action_id": "run_pipeline",
+    "slug": "monmouthshire",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Monmouthshire",
+    "status": "done",
+    "added_at": 1789491076.532421,
+    "started_at": 1789491430.1562161,
+    "finished_at": 1789491455.328774,
+    "exit_code": 0
+  },
+  {
+    "id": "f78282b850934fd5bcb84d29d11ac9ad",
+    "action_id": "run_pipeline",
+    "slug": "northampton_south",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Northampton South",
+    "status": "done",
+    "added_at": 1789491084.191327,
+    "started_at": 1789491457.3577878,
+    "finished_at": 1789491795.485694,
+    "exit_code": 0
+  },
+  {
+    "id": "dea58d7fae64408990c7f14c376269cf",
+    "action_id": "run_pipeline",
+    "slug": "norwich_north",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Norwich North",
+    "status": "pending",
+    "added_at": 1789491089.2207859,
+    "started_at": null,
+    "finished_at": null,
+    "exit_code": null
+  },
+  {
+    "id": "105a07c2ad95494c813713abd9bd34db",
+    "action_id": "run_pipeline",
+    "slug": "nottingham_north_and_kimberley",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Nottingham North and Kimberley",
+    "status": "pending",
+    "added_at": 1789491094.936865,
+    "started_at": null,
+    "finished_at": null,
+    "exit_code": null
+  },
+  {
+    "id": "0c0b636a9b774ca2b9b3a668aaa82070",
+    "action_id": "run_pipeline",
+    "slug": "pontefract_castleford_and_knottingley",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Pontefract, Castleford and Knottingley",
+    "status": "pending",
+    "added_at": 1789491099.860259,
+    "started_at": null,
+    "finished_at": null,
+    "exit_code": null
+  },
+  {
+    "id": "0fefe57b861642c58208351287679e21",
+    "action_id": "run_pipeline",
+    "slug": "pontypridd",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Pontypridd",
+    "status": "pending",
+    "added_at": 1789491104.125503,
+    "started_at": null,
+    "finished_at": null,
+    "exit_code": null
+  },
+  {
+    "id": "1c79cfdd80fa40f8938fe91c453281c0",
+    "action_id": "run_pipeline",
+    "slug": "sittingbourne_and_sheppey",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Sittingbourne and Sheppey",
+    "status": "pending",
+    "added_at": 1789491109.4588642,
+    "started_at": null,
+    "finished_at": null,
+    "exit_code": null
+  },
+  {
+    "id": "c8b0c16e93a14aefacdd524b54b74884",
+    "action_id": "run_pipeline",
+    "slug": "south_derbyshire",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 South Derbyshire",
+    "status": "pending",
+    "added_at": 1789491113.875288,
+    "started_at": null,
+    "finished_at": null,
+    "exit_code": null
+  },
+  {
+    "id": "36fa13387b33402184e1a85ce1777f20",
+    "action_id": "run_pipeline",
+    "slug": "tipton_and_wednesbury",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Tipton and Wednesbury",
+    "status": "pending",
+    "added_at": 1789491118.416458,
+    "started_at": null,
     "finished_at": null,
     "exit_code": null
   }

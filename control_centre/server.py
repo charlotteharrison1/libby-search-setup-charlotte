@@ -182,6 +182,12 @@ def api_analysis_accepted_group_points():
     return jsonify(analysis.accepted_group_points())
 
 
+@app.route("/api/analysis/accepted_averages_by_area")
+def api_analysis_accepted_averages_by_area():
+    from uk import analysis
+    return jsonify(analysis.accepted_averages_by_area())
+
+
 def _resolve_command(body: dict) -> tuple[list[str] | None, tuple[dict, int] | None]:
     """Shared by /api/run and /api/preview: resolve the request body to an
     argv list via actions.build_command — the ONE place command-building

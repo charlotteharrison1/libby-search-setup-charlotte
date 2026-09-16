@@ -289,3 +289,70 @@ def accepted_group_points() -> dict:
         "total_areas_matched": int(areas["ruc_label"].notna().sum()),
         "total_areas_unmatched": len(unmatched_areas),
     }
+
+
+def accepted_averages_by_area() -> dict:
+    """One point per *area* (not per group, and not per RUC label — see
+    accepted_group_points and group_stats_by_area_type for those) — each
+    area's own average member count and average posting activity across
+    its accepted groups, labeled by rural/urban classification. Answers
+    "which areas have unusually large/active groups", at area granularity,
+    rather than "what's the spread within a rural/urban category" (the
+    other scatter) or "what's the category-wide average" (the table).
+
+    An area contributes a point only if at least one of its accepted
+    groups has both members and posts_a_month recorded — same "can't
+    average what was never measured" reasoning as accepted_group_points.
+    """
+    empty = {"areas": [], "unmatched_areas": [], "total_areas_matched": 0, "total_areas_unmatched": 0}
+    if not GROUP_LOG_PATH.exists():
+        return empty
+
+    log = pd.read_csv(GROUP_LOG_PATH, dtype=str, encoding="utf-8", encoding_errors="surrogatepass").fillna("")
+    if log.empty:
+        return empty
+
+    pcon_lookup = _constituency_ruc_lookup()
+    la_lookup = _local_authority_ruc_lookup()
+
+    log["ruc_label"] = [
+        _resolve_ruc_label(at, an, pcon_lookup, la_lookup)
+        for at, an in zip(log["area_type"], log["area_name"])
+    ]
+
+    areas_all = log[["area_type", "area_name", "ruc_label"]].drop_duplicates()
+    unmatched_areas = sorted(
+        f"{r.area_name} ({r.area_type})" for r in areas_all[areas_all["ruc_label"].isna()].itertuples()
+    )
+
+    matched = log[(log["accepted"] == "Y") & log["ruc_label"].notna()].copy()
+    matched["members"] = pd.to_numeric(matched["members"], errors="coerce")
+    matched["posts_a_month"] = pd.to_numeric(matched["posts_a_month"], errors="coerce")
+    plottable = matched.dropna(subset=["members", "posts_a_month"])
+
+    if plottable.empty:
+        return {
+            "areas": [], "unmatched_areas": unmatched_areas,
+            "total_areas_matched": int(areas_all["ruc_label"].notna().sum()),
+            "total_areas_unmatched": len(unmatched_areas),
+        }
+
+    grouped = (
+        plottable.groupby(["area_type", "area_name", "ruc_label"])
+        .agg(
+            num_groups=("group_url", "count"),
+            avg_members=("members", "mean"),
+            avg_posts_a_month=("posts_a_month", "mean"),
+        )
+        .reset_index()
+        .rename(columns={"ruc_label": "area_type_label"})
+    )
+    grouped["avg_members"] = grouped["avg_members"].round(1)
+    grouped["avg_posts_a_month"] = grouped["avg_posts_a_month"].round(1)
+
+    return {
+        "areas": json.loads(grouped.to_json(orient="records")),
+        "unmatched_areas": unmatched_areas,
+        "total_areas_matched": int(areas_all["ruc_label"].notna().sum()),
+        "total_areas_unmatched": len(unmatched_areas),
+    }

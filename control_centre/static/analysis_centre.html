@@ -193,6 +193,19 @@
   <div id="statsContent"></div>
 </section>
 
+<section>
+  <h2>Area averages: members vs. posting activity</h2>
+  <p class="methodology">
+    One dot per <strong>area</strong> (not per group — see the scatter above for that) — its own average member
+    count and average posting activity across its accepted groups, colored the same way as the rural/urban section.
+    Answers "which areas have unusually large or active groups", rather than the spread within a category.
+  </p>
+  <div class="toolbar">
+    <button class="btn-secondary" id="areaScatterRefreshBtn" type="button">Refresh</button>
+  </div>
+  <div id="areaScatterWrap"></div>
+</section>
+
 <script>
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => (
@@ -455,44 +468,51 @@ const RUC_COLORS = {
 };
 const RUC_FALLBACK_COLOR = "#90a4c9";
 
-// log1p (log(1+x)), not a plain log — member counts and especially
-// posts/month legitimately hit 0, and a plain log scale can't place 0
-// anywhere. Still compresses the huge range (tens to hundreds of
-// thousands of members) down to something a fixed-size plot can show.
-function log1pScale(value, maxValue, size) {
-  const v = Math.log1p(Math.max(0, value));
-  const m = Math.log1p(Math.max(0, maxValue)) || 1;
+// log1p (log(1+x)) of the value's distance above minValue, not a plain log
+// of the raw value — the axis floor is the smallest value actually present
+// in the data (an accepted group can never have, say, under ~10 members or
+// under ~5 posts/month — uk.pipeline's/uk.pipeline_ward's own filter
+// thresholds — so starting the axis at 0 would waste a third of the plot
+// on a range nothing can ever occupy). log1p rather than a plain log so a
+// value equal to minValue itself still places cleanly at position 0.
+function log1pRangeScale(value, minValue, maxValue, size) {
+  const v = Math.log1p(Math.max(0, value - minValue));
+  const m = Math.log1p(Math.max(0, maxValue - minValue)) || 1;
   return (v / m) * size;
 }
 
-function niceTicks(maxValue, candidates) {
-  return candidates.filter(t => t === 0 || t <= maxValue * 1.05);
+// minValue itself is always the first tick (labels the actual floor,
+// whatever it happens to be) — the round-number candidates just add a
+// couple more reference points above it, when they fit in range.
+function niceTicks(minValue, maxValue, candidates) {
+  const rounded = candidates.filter(t => t > minValue && t <= maxValue * 1.05);
+  return [minValue, ...rounded];
 }
 
-function renderScatter(data) {
-  const wrap = document.getElementById("scatterWrap");
-  const points = data.points || [];
-
-  if (points.length === 0) {
-    wrap.innerHTML = data.excluded_no_data
-      ? `<div class="empty">No plottable groups yet — ${data.excluded_no_data} accepted group(s) are missing member/activity data (they predate this being tracked); they'll appear here once their area is reprocessed.</div>`
-      : `<div class="empty">No accepted groups yet — run the pipeline on some areas first.</div>`;
-    return;
-  }
-
+// Shared by both scatter plots on this page (per-group, and per-area
+// averages) — takes points already carrying an area_type_label to color
+// by, the field names to plot, and a tooltip-text function, and returns
+// the SVG + legend markup. Neither caller needs to touch axis math again.
+function scatterChart(points, xKey, yKey, xTickCandidates, yTickCandidates, xAxisTitle, yAxisTitle, tooltipFn, sizeKey = null, yAxisMin = null, xAxisMin = null) {
   const width = 680, height = 400;
   const marginLeft = 62, marginBottom = 44, marginTop = 16, marginRight = 16;
   const plotW = width - marginLeft - marginRight;
   const plotH = height - marginTop - marginBottom;
 
-  const maxMembers = Math.max(...points.map(p => p.members));
-  const maxPosts = Math.max(...points.map(p => p.posts_a_month));
+  const xs = points.map(p => p[xKey]), ys = points.map(p => p[yKey]);
+  // An explicit floor (rather than the data's own min) keeps the lowest
+  // point off the axis line itself — when a data value lands exactly at
+  // the computed min, log1pRangeScale places it at position 0.
+  const minX = xAxisMin != null ? Math.min(xAxisMin, ...xs) : Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = yAxisMin != null ? Math.min(yAxisMin, ...ys) : Math.min(...ys);
+  const maxY = Math.max(...ys);
 
-  const xTicks = niceTicks(maxMembers, [0, 100, 1000, 10000, 100000, 1000000]);
-  const yTicks = niceTicks(maxPosts, [0, 10, 50, 100, 500, 1000, 5000]);
+  const xTicks = niceTicks(minX, maxX, xTickCandidates);
+  const yTicks = niceTicks(minY, maxY, yTickCandidates);
 
-  const x = v => marginLeft + log1pScale(v, maxMembers, plotW);
-  const y = v => marginTop + plotH - log1pScale(v, maxPosts, plotH);
+  const x = v => marginLeft + log1pRangeScale(v, minX, maxX, plotW);
+  const y = v => marginTop + plotH - log1pRangeScale(v, minY, maxY, plotH);
 
   const gridLines = [
     ...xTicks.map(t => `<line class="grid-line" x1="${x(t)}" y1="${marginTop}" x2="${x(t)}" y2="${marginTop + plotH}"></line>`),
@@ -502,11 +522,22 @@ function renderScatter(data) {
   const xLabels = xTicks.map(t => `<text class="axis-label" x="${x(t)}" y="${marginTop + plotH + 18}" text-anchor="middle">${t.toLocaleString()}</text>`).join("");
   const yLabels = yTicks.map(t => `<text class="axis-label" x="${marginLeft - 8}" y="${y(t) + 4}" text-anchor="end">${t.toLocaleString()}</text>`).join("");
 
+  // sqrt scale (not linear) so bubble AREA, not radius, is proportional to
+  // the size value — a linear radius scale would visually exaggerate the
+  // difference between two categories' group counts.
+  let radiusOf = () => 4.5;
+  if (sizeKey) {
+    const sizes = points.map(p => p[sizeKey]);
+    const minS = Math.min(...sizes), maxS = Math.max(...sizes);
+    const minR = 10, maxR = 42;
+    radiusOf = v => minS === maxS ? (minR + maxR) / 2 : minR + Math.sqrt((v - minS) / (maxS - minS)) * (maxR - minR);
+  }
+
   const circles = points.map(p => {
     const color = RUC_COLORS[p.area_type_label] || RUC_FALLBACK_COLOR;
-    return `<circle cx="${x(p.members).toFixed(1)}" cy="${y(p.posts_a_month).toFixed(1)}" r="4.5" fill="${color}">` +
-      `<title>${escapeHtml(p.group)} — ${escapeHtml(p.area_name)} (${escapeHtml(p.area_type_label)})\n${p.members.toLocaleString()} members, ${p.posts_a_month.toLocaleString()} posts/mo</title>` +
-      `</circle>`;
+    const r = sizeKey ? radiusOf(p[sizeKey]) : 4.5;
+    return `<circle cx="${x(p[xKey]).toFixed(1)}" cy="${y(p[yKey]).toFixed(1)}" r="${r.toFixed(1)}" fill="${color}" fill-opacity="${sizeKey ? 0.7 : 1}">` +
+      `<title>${escapeHtml(tooltipFn(p))}</title></circle>`;
   }).join("");
 
   const svg = `
@@ -516,8 +547,8 @@ function renderScatter(data) {
       <line class="axis-line" x1="${marginLeft}" y1="${marginTop}" x2="${marginLeft}" y2="${marginTop + plotH}"></line>
       ${xLabels}
       ${yLabels}
-      <text class="axis-title" x="${marginLeft + plotW / 2}" y="${height - 4}" text-anchor="middle">Members</text>
-      <text class="axis-title" x="${-(marginTop + plotH / 2)}" y="14" text-anchor="middle" transform="rotate(-90)">Posts / month</text>
+      <text class="axis-title" x="${marginLeft + plotW / 2}" y="${height - 4}" text-anchor="middle">${escapeHtml(xAxisTitle)}</text>
+      <text class="axis-title" x="${-(marginTop + plotH / 2)}" y="14" text-anchor="middle" transform="rotate(-90)">${escapeHtml(yAxisTitle)}</text>
       ${circles}
     </svg>`;
 
@@ -532,11 +563,86 @@ function renderScatter(data) {
       `).join("")}
     </div>`;
 
+  return svg + legend;
+}
+
+function renderCategoryBubbles(rows) {
+  // These are category-level averages (a handful of RUC labels), clustered
+  // in the low thousands — not individual groups, which can run into the
+  // hundreds of thousands. The per-group chart's tick candidates would
+  // mostly fall outside this data's range, so this chart gets its own,
+  // plus explicit axis floors below the real min so no bubble sits on
+  // the axis line itself.
+  const chart = scatterChart(
+    rows, "avg_members", "avg_posts_a_month",
+    [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000], [10, 50, 100, 500, 1000, 5000],
+    "Avg. members", "Avg. posts/month",
+    r => `${r.area_type_label}\n${r.num_groups} groups across ${r.num_areas} area(s)\navg ${r.avg_members.toLocaleString()} members, ${r.avg_posts_a_month.toLocaleString()} posts/mo`,
+    "num_groups",
+    470,
+    3000,
+  );
+  return `<div class="scatter-title">Avg. members vs. posting activity, by area type (bubble size = total groups)</div>` + chart;
+}
+
+function renderScatter(data) {
+  const wrap = document.getElementById("scatterWrap");
+  const points = data.points || [];
+
+  if (points.length === 0) {
+    wrap.innerHTML = data.excluded_no_data
+      ? `<div class="empty">No plottable groups yet — ${data.excluded_no_data} accepted group(s) are missing member/activity data (they predate this being tracked); they'll appear here once their area is reprocessed.</div>`
+      : `<div class="empty">No accepted groups yet — run the pipeline on some areas first.</div>`;
+    return;
+  }
+
+  const chart = scatterChart(
+    points, "members", "posts_a_month",
+    [100, 1000, 10000, 100000, 1000000], [10, 50, 100, 500, 1000, 5000],
+    "Members", "Posts / month",
+    p => `${p.group} — ${p.area_name} (${p.area_type_label})\n${p.members.toLocaleString()} members, ${p.posts_a_month.toLocaleString()} posts/mo`,
+  );
+
   const excludedNote = data.excluded_no_data
     ? `<div class="warning">${data.excluded_no_data} accepted group(s) omitted — missing member/activity data (predates this being tracked).</div>`
     : "";
 
-  wrap.innerHTML = `<div class="scatter-title">Members vs. posting activity, by area type</div>` + svg + legend + excludedNote;
+  wrap.innerHTML = `<div class="scatter-title">Members vs. posting activity, by area type</div>` + chart + excludedNote;
+}
+
+function renderAreaScatter(data) {
+  const wrap = document.getElementById("areaScatterWrap");
+  const areas = data.areas || [];
+
+  if (areas.length === 0) {
+    wrap.innerHTML = `<div class="empty">No areas with plottable accepted-group data yet.</div>`;
+    return;
+  }
+
+  const chart = scatterChart(
+    areas, "avg_members", "avg_posts_a_month",
+    [100, 1000, 10000, 100000, 1000000], [10, 50, 100, 500, 1000, 5000],
+    "Avg. members (accepted groups)", "Avg. posts/month (accepted groups)",
+    a => `${a.area_name} (${a.area_type}, ${a.area_type_label})\n${a.num_groups} accepted group(s)\navg ${a.avg_members.toLocaleString()} members, ${a.avg_posts_a_month.toLocaleString()} posts/mo`,
+  );
+
+  const warning = data.unmatched_areas && data.unmatched_areas.length
+    ? `<div class="warning"><strong>${data.unmatched_areas.length} area(s) excluded</strong> — could not be matched to a rural/urban classification: ${data.unmatched_areas.map(escapeHtml).join(", ")}</div>`
+    : "";
+
+  wrap.innerHTML = `<div class="scatter-title">Area averages: members vs. posting activity</div>` + chart + warning;
+}
+
+async function loadAreaScatter() {
+  const wrap = document.getElementById("areaScatterWrap");
+  wrap.innerHTML = `<div class="empty">Loading…</div>`;
+  try {
+    const res = await fetch("/api/analysis/accepted_averages_by_area");
+    const data = await res.json();
+    renderAreaScatter(data);
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty">Failed to load: ${escapeHtml(String(e))}</div>`;
+  }
 }
 
 async function loadStats() {
@@ -563,7 +669,9 @@ async function loadStats() {
       ? `<div class="warning"><strong>${stats.unmatched_areas.length} area(s) excluded</strong> — could not be matched to a rural/urban classification: ${stats.unmatched_areas.map(escapeHtml).join(", ")}</div>`
       : "";
 
-    content.innerHTML = statsTable(stats.rows) + `<div class="scatter-wrap" id="scatterWrap"></div>` + warning;
+    const bubbleChart = stats.rows.length > 1 ? renderCategoryBubbles(stats.rows) : "";
+
+    content.innerHTML = statsTable(stats.rows) + bubbleChart + `<div class="scatter-wrap" id="scatterWrap"></div>` + warning;
     renderScatter(points);
   } catch (e) {
     content.innerHTML = `<div class="empty">Failed to load: ${escapeHtml(String(e))}</div>`;
@@ -571,10 +679,12 @@ async function loadStats() {
 }
 
 document.getElementById("statsRefreshBtn").addEventListener("click", loadStats);
+document.getElementById("areaScatterRefreshBtn").addEventListener("click", loadAreaScatter);
 
 loadReasons();
 loadRural();
 loadStats();
+loadAreaScatter();
 </script>
 </body>
 </html>
