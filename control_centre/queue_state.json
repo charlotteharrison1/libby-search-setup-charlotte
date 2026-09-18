@@ -473,11 +473,11 @@
       "force": true
     },
     "label": "Run pipeline \u2014 Norwich North",
-    "status": "pending",
+    "status": "done",
     "added_at": 1789491089.2207859,
-    "started_at": null,
-    "finished_at": null,
-    "exit_code": null
+    "started_at": 1789552656.052639,
+    "finished_at": 1789552929.796187,
+    "exit_code": 0
   },
   {
     "id": "105a07c2ad95494c813713abd9bd34db",
@@ -490,11 +490,11 @@
       "force": true
     },
     "label": "Run pipeline \u2014 Nottingham North and Kimberley",
-    "status": "pending",
+    "status": "done",
     "added_at": 1789491094.936865,
-    "started_at": null,
-    "finished_at": null,
-    "exit_code": null
+    "started_at": 1789552931.841225,
+    "finished_at": 1789552972.951424,
+    "exit_code": 0
   },
   {
     "id": "0c0b636a9b774ca2b9b3a668aaa82070",
@@ -507,11 +507,11 @@
       "force": true
     },
     "label": "Run pipeline \u2014 Pontefract, Castleford and Knottingley",
-    "status": "pending",
+    "status": "done",
     "added_at": 1789491099.860259,
-    "started_at": null,
-    "finished_at": null,
-    "exit_code": null
+    "started_at": 1789552974.980583,
+    "finished_at": 1789553005.21565,
+    "exit_code": 0
   },
   {
     "id": "0fefe57b861642c58208351287679e21",
@@ -524,11 +524,11 @@
       "force": true
     },
     "label": "Run pipeline \u2014 Pontypridd",
-    "status": "pending",
+    "status": "done",
     "added_at": 1789491104.125503,
-    "started_at": null,
-    "finished_at": null,
-    "exit_code": null
+    "started_at": 1789553007.245635,
+    "finished_at": 1789553012.1455941,
+    "exit_code": 0
   },
   {
     "id": "1c79cfdd80fa40f8938fe91c453281c0",
@@ -541,11 +541,11 @@
       "force": true
     },
     "label": "Run pipeline \u2014 Sittingbourne and Sheppey",
-    "status": "pending",
+    "status": "done",
     "added_at": 1789491109.4588642,
-    "started_at": null,
-    "finished_at": null,
-    "exit_code": null
+    "started_at": 1789553014.162386,
+    "finished_at": 1789553106.69072,
+    "exit_code": 0
   },
   {
     "id": "c8b0c16e93a14aefacdd524b54b74884",
@@ -558,11 +558,11 @@
       "force": true
     },
     "label": "Run pipeline \u2014 South Derbyshire",
-    "status": "pending",
+    "status": "done",
     "added_at": 1789491113.875288,
-    "started_at": null,
-    "finished_at": null,
-    "exit_code": null
+    "started_at": 1789553108.720335,
+    "finished_at": 1789553133.742739,
+    "exit_code": 0
   },
   {
     "id": "36fa13387b33402184e1a85ce1777f20",
@@ -575,10 +575,205 @@
       "force": true
     },
     "label": "Run pipeline \u2014 Tipton and Wednesbury",
-    "status": "pending",
+    "status": "done",
     "added_at": 1789491118.416458,
-    "started_at": null,
-    "finished_at": null,
-    "exit_code": null
+    "started_at": 1789553135.7761228,
+    "finished_at": 1789553187.2808,
+    "exit_code": 0
+  },
+  {
+    "id": "184811946a3542bfb07378a406b960c7",
+    "action_id": "run_pipeline",
+    "slug": "vale_of_glamorgan",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Vale of Glamorgan",
+    "status": "done",
+    "added_at": 1789552683.1827352,
+    "started_at": 1789553189.3058538,
+    "finished_at": 1789553205.4508631,
+    "exit_code": 0
+  },
+  {
+    "id": "40ec87942d0e475084cc4c9c6d1b435e",
+    "action_id": "run_pipeline",
+    "slug": "walsall_and_bloxwich",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Walsall and Bloxwich",
+    "status": "done",
+    "added_at": 1789552686.897055,
+    "started_at": 1789553207.4701,
+    "finished_at": 1789553215.72289,
+    "exit_code": 0
+  },
+  {
+    "id": "5c2008c64d934157b044ef193a0908ef",
+    "action_id": "run_pipeline",
+    "slug": "west_bromwich",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 West Bromwich",
+    "status": "done",
+    "added_at": 1789552691.695024,
+    "started_at": 1789553217.761627,
+    "finished_at": 1789553221.716376,
+    "exit_code": 0
+  },
+  {
+    "id": "6bbc5d9fb775406fbcbc19db78eb807b",
+    "action_id": "run_pipeline",
+    "slug": "west_finchley",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 West Finchley",
+    "status": "done",
+    "added_at": 1789552695.522322,
+    "started_at": 1789553223.742348,
+    "finished_at": 1789553228.3437052,
+    "exit_code": 0
+  },
+  {
+    "id": "22e332811d184e219d04887976284942",
+    "action_id": "run_pipeline",
+    "slug": "woodhouse",
+    "params": {
+      "context": false,
+      "about": true,
+      "stop_before_ai_assessment": false,
+      "force": true
+    },
+    "label": "Run pipeline \u2014 Woodhouse",
+    "status": "done",
+    "added_at": 1789552723.1373498,
+    "started_at": 1789553230.3686368,
+    "finished_at": 1789553232.964023,
+    "exit_code": 0
+  },
+  {
+    "id": "2afcf102eace4b02b33f6d107782d556",
+    "action_id": "run_pipeline",
+    "slug": "aberafan_maesteg",
+    "params": {},
+    "label": "Run pipeline \u2014 Aberafan Maesteg",
+    "status": "done",
+    "added_at": 1789732718.833261,
+    "started_at": 1789732720.148354,
+    "finished_at": 1789732760.613913,
+    "exit_code": 0
+  },
+  {
+    "id": "17abb66f5f6540b29d131c341109ab6b",
+    "action_id": "run_pipeline",
+    "slug": "aberdeen_north",
+    "params": {
+      "about": true
+    },
+    "label": "Run pipeline \u2014 Aberdeen North",
+    "status": "done",
+    "added_at": 1789737639.821076,
+    "started_at": 1789737640.493731,
+    "finished_at": 1789737965.0773592,
+    "exit_code": 0
+  },
+  {
+    "id": "c107eaebd26b493fb66244823f18f24c",
+    "action_id": "run_pipeline",
+    "slug": "aberdeen_south",
+    "params": {
+      "about": true
+    },
+    "label": "Run pipeline \u2014 Aberdeen South",
+    "status": "done",
+    "added_at": 1789737639.833063,
+    "started_at": 1789737967.102601,
+    "finished_at": 1789738095.870062,
+    "exit_code": 0
+  },
+  {
+    "id": "07c6b2fe4ad747ffb542143d0e8846ec",
+    "action_id": "run_pipeline",
+    "slug": "aberdeenshire_north_and_moray_east",
+    "params": {
+      "about": true
+    },
+    "label": "Run pipeline \u2014 Aberdeenshire North and Moray East",
+    "status": "done",
+    "added_at": 1789737639.849362,
+    "started_at": 1789738097.8971012,
+    "finished_at": 1789738186.801179,
+    "exit_code": 0
+  },
+  {
+    "id": "d13534623b444c0f82aa101d6cf6ed61",
+    "action_id": "run_pipeline",
+    "slug": "airdrie_and_shotts",
+    "params": {
+      "about": true
+    },
+    "label": "Run pipeline \u2014 Airdrie and Shotts",
+    "status": "done",
+    "added_at": 1789737639.860666,
+    "started_at": 1789738188.837109,
+    "finished_at": 1789738212.291023,
+    "exit_code": 0
+  },
+  {
+    "id": "3d076a6712d441019be3e90bf03f4d28",
+    "action_id": "run_pipeline",
+    "slug": "aldershot",
+    "params": {
+      "about": true
+    },
+    "label": "Run pipeline \u2014 Aldershot",
+    "status": "done",
+    "added_at": 1789737639.869934,
+    "started_at": 1789738214.318628,
+    "finished_at": 1789738257.155375,
+    "exit_code": 0
+  },
+  {
+    "id": "6a56e7295cf54c96bd4a9231f3d9283f",
+    "action_id": "run_pipeline",
+    "slug": "hemel_hempstead",
+    "params": {
+      "about": true
+    },
+    "label": "Run pipeline \u2014 Hemel Hempstead",
+    "status": "done",
+    "added_at": 1789737639.878956,
+    "started_at": 1789738259.185657,
+    "finished_at": 1789738307.087589,
+    "exit_code": 0
+  },
+  {
+    "id": "25b86259900b4be5b507442e9f7e34ce",
+    "action_id": "run_pipeline",
+    "slug": "wigan",
+    "params": {
+      "about": true
+    },
+    "label": "Run pipeline \u2014 Wigan",
+    "status": "done",
+    "added_at": 1789737639.8878238,
+    "started_at": 1789738309.114822,
+    "finished_at": 1789738342.2449422,
+    "exit_code": 0
   }
 ]

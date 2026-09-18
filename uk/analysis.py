@@ -13,6 +13,7 @@ underlying mySociety dataset).
 
 import json
 import re
+import unicodedata
 
 import pandas as pd
 
@@ -60,14 +61,25 @@ def _load_resources() -> dict[str, pd.DataFrame]:
     return _RESOURCES_CACHE
 
 
+def _normalize_pcon_name(name: str) -> str:
+    # Strips diacritics only ("Glyndŵr" -> "Glyndwr") — the one known gap
+    # between this resource's Welsh-language spelling and
+    # uk.settings.CONSTITUENCIES_PATH's plain-ASCII one for the same seat.
+    decomposed = unicodedata.normalize("NFKD", str(name))
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
+
+
 def _constituency_ruc_lookup() -> dict[str, str]:
     """constituency-name -> RUC label ("Urban", "Rural", "Urban with rural
-    areas", "Sparse and rural"). Matched by exact name — verified this
-    resource's constituency-name values are the same 2024-boundary naming
-    uk.settings.CONSTITUENCIES_PATH uses (both real constituencies checked
-    against so far match exactly)."""
-    pcon = _load_resources()["pcon_ruc"]
-    return dict(zip(pcon["constituency-name"], pcon["ruc-cluster-label"]))
+    areas", "Sparse and rural"). pcon_2025_ruc (not the older, similarly
+    named pcon_ruc resource) — pcon_ruc predates the 2023 boundary review,
+    so 233 of the current 650 constituencies (anything new or renamed at
+    that review, e.g. "Cardiff East", "West Bromwich") simply aren't in it
+    at all. pcon_2025_ruc matches all but one of the current 650 exactly;
+    the last (a Welsh-diacritic spelling difference) is covered by
+    normalizing both sides' names."""
+    pcon = _load_resources()["pcon_2025_ruc"]
+    return {_normalize_pcon_name(name): label for name, label in zip(pcon["constituency-name"], pcon["label"])}
 
 
 def _local_authority_ruc_lookup() -> dict[str, str]:
@@ -81,7 +93,7 @@ _WARD_AREA_NAME_RE = re.compile(r"^(.*) \(([^)]*)\)$")
 
 def _resolve_ruc_label(area_type: str, area_name: str, pcon_lookup: dict, la_lookup: dict) -> str | None:
     if area_type == "constituency":
-        return pcon_lookup.get(area_name)
+        return pcon_lookup.get(_normalize_pcon_name(area_name))
     # ward: area_name is "<ward name> (<local authority>)" — see
     # uk.pipeline_ward._ward_area_name. No ward-level classification exists
     # in the rural index, so the parent local authority's is used instead.
@@ -168,7 +180,7 @@ def group_stats_by_area_type() -> dict:
     are excluded from the member/activity averages (but still counted
     towards num_groups) rather than silently skewing them towards zero.
     """
-    empty = {"rows": [], "unmatched_areas": [], "total_areas_matched": 0, "total_areas_unmatched": 0}
+    empty = {"rows": [], "rows_by_unit": [], "unmatched_areas": [], "total_areas_matched": 0, "total_areas_unmatched": 0}
     if not GROUP_LOG_PATH.exists():
         return empty
 
@@ -201,23 +213,39 @@ def group_stats_by_area_type() -> dict:
     matched["posts_a_month"] = pd.to_numeric(matched["posts_a_month"], errors="coerce")
     matched["area_key"] = matched["area_type"] + "|" + matched["area_name"]
 
-    summary = (
-        matched.groupby("ruc_label")
-        .agg(
-            num_areas=("area_key", "nunique"),
-            num_groups=("group_url", "count"),
-            avg_members=("members", "mean"),
-            median_members=("members", "median"),
-            avg_posts_a_month=("posts_a_month", "mean"),
-            median_posts_a_month=("posts_a_month", "median"),
+    def _aggregate(group_cols: list[str]) -> pd.DataFrame:
+        out = (
+            matched.groupby(group_cols)
+            .agg(
+                num_areas=("area_key", "nunique"),
+                num_groups=("group_url", "count"),
+                avg_members=("members", "mean"),
+                median_members=("members", "median"),
+                avg_posts_a_month=("posts_a_month", "mean"),
+                median_posts_a_month=("posts_a_month", "median"),
+            )
+            .reset_index()
+            .rename(columns={"ruc_label": "area_type_label"})
         )
-        .reset_index()
-        .rename(columns={"ruc_label": "area_type_label"})
-    )
-    summary["avg_groups_per_area"] = (summary["num_groups"] / summary["num_areas"]).round(2)
-    for col in ("avg_members", "median_members", "avg_posts_a_month", "median_posts_a_month"):
-        summary[col] = summary[col].round(1)
-    summary = summary.sort_values("num_groups", ascending=False)
+        out["avg_groups_per_area"] = (out["num_groups"] / out["num_areas"]).round(2)
+        for col in ("avg_members", "median_members", "avg_posts_a_month", "median_posts_a_month"):
+            out[col] = out[col].round(1)
+        return out.sort_values("num_groups", ascending=False)
+
+    summary = _aggregate(["ruc_label"])
+
+    # Same aggregation, but also split by area_type (constituency vs ward) —
+    # "avg_groups_per_area" and "avg_posts_a_month" are only comparable
+    # across RUC labels when the "area" unit is the same size. A ward is a
+    # small fraction of a constituency, so an RUC label with wards mixed in
+    # (currently only "Urban" has any) reads artificially lower on both
+    # figures than one made up entirely of constituencies — not because it
+    # has fewer/less-active groups, but because its average includes a
+    # smaller unit. rows_by_unit keeps constituency and ward separate so
+    # nothing gets silently blended across an unequal geography; "rows"
+    # above stays as the original blended-by-label view for the sections
+    # that already use it.
+    by_unit = _aggregate(["ruc_label", "area_type"])
 
     return {
         # to_json (not to_dict) so a NaN average (a label with no groups
@@ -225,6 +253,7 @@ def group_stats_by_area_type() -> dict:
         # JSON null, not a bare NaN token json.dumps would choke a strict
         # parser on.
         "rows": json.loads(summary.to_json(orient="records")),
+        "rows_by_unit": json.loads(by_unit.to_json(orient="records")),
         "unmatched_areas": unmatched_areas,
         "total_areas_matched": int(areas["ruc_label"].notna().sum()),
         "total_areas_unmatched": len(unmatched_areas),

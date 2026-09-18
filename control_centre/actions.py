@@ -76,9 +76,23 @@ def _build_push(row, params):
 
 def _build_pull(row, params):
     cmd = [str(REPO_ROOT / "sync_scrape.sh"), "pull"]
+    if params.get("force"):
+        cmd.append("--force")
     if row["type"] == "ward":
         cmd.append("--wards")
     cmd.append(row["name"])
+    return cmd
+
+
+def _build_pull_bulk(row, params):
+    # sync_scrape.sh pull --all already covers every constituency + ward
+    # with a local search-targets file — and, since it skips anything
+    # whose scraped file already exists, that's naturally "pull everything
+    # not yet pulled" with no name list to build here. --force flips that
+    # to "re-pull everything, replacing what's already there".
+    cmd = [str(REPO_ROOT / "sync_scrape.sh"), "pull", "--all"]
+    if params.get("force"):
+        cmd.append("--force")
     return cmd
 
 
@@ -197,6 +211,7 @@ ACTIONS = {
     "prep_bulk":               ("Bulk prep (Pick 5)",            "Prep",    False, _build_prep_bulk),
     "push":                    ("Push",                          "Push",    True,  _build_push),
     "pull":                    ("Pull scraped groups",           "Pull",    True,  _build_pull),
+    "pull_bulk":               ("Bulk pull (everything not yet pulled)", "Pull", False, _build_pull_bulk),
     "pull_about":              ("Pull About-scrape",             "Pull",    True,  _build_pull_about),
     "run_pipeline":            ("Run pipeline",                  "Process", True,  _build_run_pipeline),
     "set_scrape_target":       ("Set scrape target",             "Remote",  True,  _build_set_scrape_target),

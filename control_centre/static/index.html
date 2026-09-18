@@ -209,6 +209,7 @@
   <div class="log-head">
     <h2>Queue <span class="badge" id="queueCount"></span></h2>
     <div style="display:flex; gap:8px;">
+      <button class="btn-secondary" id="queueAllUnprocessedBtn" type="button" title="Add every scraped-but-not-yet-processed area as a Run pipeline job">Queue all unprocessed</button>
       <button class="btn-secondary" id="queuePauseBtn" type="button">Pause</button>
       <button class="btn-secondary" id="queueClearBtn" type="button">Clear finished</button>
     </div>
@@ -234,6 +235,7 @@
       <option value="ward">Ward</option>
     </select>
     <label class="chk"><input type="checkbox" id="showAllToggle"> show all (incl. untouched)</label>
+    <button class="btn-secondary" id="exportCsvBtn" type="button">Export CSV</button>
     <span class="hint" id="sortHint"></span>
   </div>
   <div class="table-wrap">
@@ -244,6 +246,7 @@
       <tbody id="statusBody"></tbody>
     </table>
   </div>
+  <div class="hint">groups/ is the live set actively being scraped; inputs/ has just come out of the pipeline, waiting to be promoted into groups/.</div>
 </section>
 
 <script>
@@ -256,7 +259,8 @@ const PARAM_DEFS = {
   prep: [{key: "force", label: "--force"}],
   prep_bulk: [{key: "force", label: "--force"}],
   push: [],
-  pull: [],
+  pull: [{key: "force", label: "--force (replace this area's scrape even if already pulled)"}],
+  pull_bulk: [{key: "force", label: "--force (re-pull everything, including already-pulled areas)"}],
   pull_about: [],
   run_pipeline: [
     {key: "context", label: "--context"},
@@ -346,8 +350,8 @@ const STATUS_COLUMNS = [
   {key: "scraped", label: "Scraped", kind: "bool"},
   {key: "about", label: "About", kind: "bool"},
   {key: "processed", label: "Processed", kind: "bool"},
-  {key: "staged", label: "Staged", kind: "bool"},
-  {key: "promoted", label: "Promoted", kind: "bool"},
+  {key: "staged", label: "inputs/", kind: "bool"},
+  {key: "promoted", label: "groups/", kind: "bool"},
 ];
 let SORT_KEY = "name";
 let SORT_DIR = 1; // 1 = ascending, -1 = descending
@@ -391,8 +395,11 @@ function renderStatusHead() {
     `sorted by ${col.label} ${SORT_DIR === 1 ? "(asc)" : "(desc)"} — click a column header to sort`;
 }
 
-function renderStatus(filterText) {
-  const body = document.getElementById("statusBody");
+// Same filter+sort every view of the status table uses — the on-screen
+// table caps at 800 rows for render speed, but an export should never
+// silently drop rows the filter matched, so this (uncapped) is the one
+// place both read from.
+function getFilteredStatusRows(filterText) {
   const f = (filterText || "").toLowerCase();
   const showAll = document.getElementById("showAllToggle").checked;
   const typeFilter = document.getElementById("typeFilter").value;
@@ -400,7 +407,13 @@ function renderStatus(filterText) {
   let rows = showAll ? AREAS : AREAS.filter(isTouched);
   if (typeFilter) rows = rows.filter(a => a.type === typeFilter);
   if (f) rows = rows.filter(a => a.name.toLowerCase().includes(f) || a.slug.includes(f));
-  rows = rows.slice().sort(compareRows);
+  return rows.slice().sort(compareRows);
+}
+
+function renderStatus(filterText) {
+  const body = document.getElementById("statusBody");
+  const showAll = document.getElementById("showAllToggle").checked;
+  const rows = getFilteredStatusRows(filterText);
 
   const touchedTotal = AREAS.filter(isTouched).length;
   document.getElementById("areaCount").textContent =
@@ -417,6 +430,30 @@ function renderStatus(filterText) {
     </tr>
   `).join("");
 }
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportStatusCsv() {
+  const rows = getFilteredStatusRows(document.getElementById("filterBox").value);
+  const header = STATUS_COLUMNS.map(c => csvCell(c.label)).join(",");
+  const body = rows.map(a => STATUS_COLUMNS.map(c => {
+    const v = a[c.key];
+    return csvCell(c.kind === "bool" ? (v ? "TRUE" : "FALSE") : v);
+  }).join(",")).join("\n");
+
+  const blob = new Blob([header + "\n" + body], {type: "text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `libby_status_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("exportCsvBtn").addEventListener("click", exportStatusCsv);
 
 function renderActionSelect() {
   const sel = document.getElementById("actionSelect");
@@ -720,6 +757,53 @@ async function addToQueue() {
   }
 }
 
+// "Unprocessed" here means the same thing the Status table's "Processed"
+// column does (staged or promoted) — scraped (so run_pipeline actually has
+// an --input file to read) but not yet run. Areas already sitting in the
+// queue as a pending/running run_pipeline job are skipped too, so clicking
+// this twice doesn't double-queue everything. Runs with --about by
+// default, matching how these have always been queued by hand.
+async function queueAllUnprocessed() {
+  const btn = document.getElementById("queueAllUnprocessedBtn");
+  btn.disabled = true;
+  try {
+    const queueRes = await fetch("/api/queue");
+    const queueData = await queueRes.json();
+    const alreadyQueued = new Set(
+      queueData.items
+        .filter(it => it.action_id === "run_pipeline" && (it.status === "pending" || it.status === "running"))
+        .map(it => it.slug)
+    );
+
+    const eligible = AREAS.filter(a => a.scraped && !a.processed && !alreadyQueued.has(a.slug));
+    if (eligible.length === 0) {
+      appendLog("Nothing to queue — every scraped area is already processed or already queued.\n");
+      return;
+    }
+
+    appendLog(`Queueing ${eligible.length} unprocessed area(s) for the pipeline...\n`, "cmd");
+    for (const area of eligible) {
+      try {
+        const res = await fetch("/api/queue/add", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({action_id: "run_pipeline", slug: area.slug, params: {about: true}}),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          appendLog(`  failed to queue ${area.name}: ${data.error || data.message}\n`, "exit-bad");
+        }
+      } catch (e) {
+        appendLog(`  failed to queue ${area.name}: ${e}\n`, "exit-bad");
+      }
+    }
+    appendLog("Done queueing.\n", "cmd");
+    await loadQueue();
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function fmtTime(ts) {
   return ts ? new Date(ts * 1000).toLocaleTimeString() : "—";
 }
@@ -791,6 +875,7 @@ document.getElementById("queueBody").addEventListener("click", async (e) => {
 });
 
 document.getElementById("queueBtn").addEventListener("click", addToQueue);
+document.getElementById("queueAllUnprocessedBtn").addEventListener("click", queueAllUnprocessed);
 document.getElementById("queuePauseBtn").addEventListener("click", async () => {
   await fetch(QUEUE_PAUSED ? "/api/queue/resume" : "/api/queue/pause", {method: "POST"});
   loadQueue();

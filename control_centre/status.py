@@ -147,21 +147,24 @@ def build_status_table() -> list[dict]:
             row = get(slug, "ward")
             row["about"] = True
 
-    # constituencies: processed output (groups_<Display Name>.csv — real name, not slug)
+    # constituencies: leftover named output in uk/output/ itself (only ever
+    # populated by a full multi-constituency batch run — a single-area run,
+    # the control centre's normal case, writes this same file then moves it
+    # straight into CLACTON_INPUTS_DIR as its last step, so this glob is
+    # usually empty; "processed" itself is computed from staged/promoted
+    # below, not from this — see there for why).
     for f in OUTPUT_DIR.glob("groups_*.csv"):
         name = f.stem[len("groups_"):]
         slug = slugify(name)
         row = get(slug, "constituency" if slug in pcon_names else "ward")
-        row["processed"] = True
         prefer_name(row, name)
 
-    # wards: processed output
+    # wards: same leftover-only caveat as above
     if WARD_OUTPUT_DIR.exists():
         for f in WARD_OUTPUT_DIR.glob("groups_*.csv"):
             name = f.stem[len("groups_"):]
             slug = slugify(name)
             row = get(slug, "ward")
-            row["processed"] = True
             prefer_name(row, name)
 
     # staged to Clacton-etc/inputs/ (constituency, flat)
@@ -190,5 +193,12 @@ def build_status_table() -> list[dict]:
             row = get(slug, "constituency" if slug in pcon_names else "ward")
             row["promoted"] = True
             prefer_name(row, name)
+
+    # "Processed" = has a completed pipeline run landed anywhere downstream
+    # of it — staged (Clacton-etc/inputs/) or promoted (Clacton-etc/groups/)
+    # — rather than checking uk/output/ directly, which the pipeline always
+    # empties back out on a normal single-area run (see the comment above).
+    for row in rows.values():
+        row["processed"] = row["staged"] or row["promoted"]
 
     return sorted(rows.values(), key=lambda r: (r["type"], r["name"]))

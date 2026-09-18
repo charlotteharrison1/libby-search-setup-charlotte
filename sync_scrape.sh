@@ -7,6 +7,8 @@
 #   ./sync_scrape.sh push|pull --wards              (every ward file only)
 #   ./sync_scrape.sh push|pull --wards "Name"           (one name, forced to wards/)
 #   ./sync_scrape.sh push|pull --constituencies "Name"  (one name, forced to search_targets/)
+#   ./sync_scrape.sh pull --all --force                 (re-pull everything, replacing local files)
+#   ./sync_scrape.sh pull --force "Name"                (replace one already-pulled area)
 #
 # Constituency files live flat in search_targets/ and scraped/; ward files
 # live in search_targets/wards/ and scraped/wards/. A bare name (no --wards /
@@ -15,6 +17,11 @@
 # after its parent constituency), that's refused as ambiguous rather than
 # silently guessed; add --wards or --constituencies to that name to say which
 # one you meant.
+#
+# pull skips any name whose local scraped file already exists, so `pull
+# --all` is naturally "pull everything not yet pulled" — pass --force
+# (anywhere in the args) to replace an already-pulled file with a fresh
+# scrape instead of skipping it. push has no such skip: it always uploads.
 
 set -uo pipefail
 
@@ -64,10 +71,24 @@ list_slugs() {
 ACTION="$1"
 shift
 
+# --force can appear anywhere after the action (--all --force, --force
+# "Name", --wards --force "Name", ...) — pulled out here, before the
+# category dispatch below, so it never gets treated as a name itself.
+FORCE=0
+REMAINING=()
+for arg in "$@"; do
+    if [[ "$arg" == "--force" ]]; then
+        FORCE=1
+    else
+        REMAINING+=("$arg")
+    fi
+done
+set -- "${REMAINING[@]}"
+
 CATEGORY=""   # "", "wards", or "constituencies" — "" means auto-detect per name
 BATCH_MODE=0
 
-case "$1" in
+case "${1:-}" in
   --all)
     CONSTITUENCIES=($(list_slugs "$LOCAL_TARGETS") $(list_slugs "$LOCAL_TARGETS_WARDS"))
     BATCH_MODE=1
@@ -100,6 +121,7 @@ fi
 
 FAILED=()
 SUCCEEDED=()
+SKIPPED=()
 
 for CONSTITUENCY in "${CONSTITUENCIES[@]}"; do
     SLUG="$(to_slug "$CONSTITUENCY")" || { echo "!! could not derive slug for: $CONSTITUENCY" >&2; FAILED+=("$CONSTITUENCY"); continue; }
@@ -158,6 +180,11 @@ for CONSTITUENCY in "${CONSTITUENCIES[@]}"; do
         ;;
 
       pull)
+        if [[ -f "$LOCAL_SCRAPED_FILE" && "$FORCE" -ne 1 ]]; then
+            echo "-- already pulled, skipping (use --force to replace): $CONSTITUENCY"
+            SKIPPED+=("$CONSTITUENCY")
+            continue
+        fi
         REMOTE_FILE="$REMOTE_DIR/data/${SLUG}_search_targets.csv"
         echo "=== pull: $CONSTITUENCY ==="
         echo "Downloading: $DEVICE:$REMOTE_FILE → $LOCAL_SCRAPED_FILE"
@@ -177,7 +204,10 @@ for CONSTITUENCY in "${CONSTITUENCIES[@]}"; do
 done
 
 echo
-echo "$ACTION complete: ${#SUCCEEDED[@]} succeeded, ${#FAILED[@]} failed"
+SUMMARY="$ACTION complete: ${#SUCCEEDED[@]} succeeded"
+[[ "$ACTION" == "pull" ]] && SUMMARY+=", ${#SKIPPED[@]} already pulled (skipped)"
+SUMMARY+=", ${#FAILED[@]} failed"
+echo "$SUMMARY"
 if [[ ${#FAILED[@]} -gt 0 ]]; then
     echo "Failed: ${FAILED[*]}"
     exit 1
