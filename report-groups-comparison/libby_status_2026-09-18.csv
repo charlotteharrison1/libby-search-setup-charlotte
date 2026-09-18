@@ -1,0 +1,72 @@
+Area,Type,Generated,Pushed,Scraped,About,Processed,inputs/,groups/
+Aberafan Maesteg,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE
+Aberdeen North,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Aberdeen South,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Aberdeenshire North and Moray East,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Airdrie and Shotts,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE
+Aldershot,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE
+Aldridge-Brownhills,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Alloa and Grangemouth,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Altrincham and Sale West,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Alyn and Deeside,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Amber Valley,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Angus and Perthshire Glens,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Arbroath and Broughty Ferry,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+"Argyll, Bute and South Lochaber",constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Arundel and South Downs,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Ashfield,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Ashford,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Ashton-under-Lyne,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Aylesbury,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+"Ayr, Carrick and Cumnock",constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Banbury,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Bangor Aberconwy,constituency,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+Bassetlaw,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Blakenall,ward,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE,TRUE
+Bloxwich East & Blakenall Heath,ward,TRUE,FALSE,TRUE,FALSE,TRUE,TRUE,FALSE
+Bolsover,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+Cardiff East,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Cardiff North,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+Childs Hill,ward,TRUE,FALSE,TRUE,FALSE,TRUE,TRUE,FALSE
+Chipping Barnet,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE
+Clacton,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE
+Corby and East Northamptonshire,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Cricklewood,ward,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE
+Derby North,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Derby South,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Earley and Woodley,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE
+East Finchley,ward,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE
+Erewash,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Filton and Bradley Stoke,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Finchley and Golders Green,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE
+Finchley Church End,ward,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE
+Garden Suburb,ward,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE
+Golders Green,ward,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE
+Hampstead and Highgate,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+"Harden, Goscote & Ryecroft",ward,TRUE,FALSE,TRUE,FALSE,TRUE,TRUE,FALSE
+Hemel Hempstead,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE
+Holborn and St Pancras,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+Hyndburn,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Knowsley,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE
+Lincoln,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+Livingston,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,TRUE
+Makerfield,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+Manchester Central,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE
+Mansfield,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE
+Mid Derbyshire,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Midlothian,constituency,TRUE,FALSE,TRUE,FALSE,TRUE,TRUE,TRUE
+Monmouthshire,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,FALSE
+Northampton South,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Norwich North,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE
+Nottingham North and Kimberley,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+"Pontefract, Castleford and Knottingley",constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Pontypridd,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE
+Sittingbourne and Sheppey,constituency,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,TRUE
+South Derbyshire,constituency,TRUE,FALSE,TRUE,FALSE,TRUE,TRUE,TRUE
+Tipton and Wednesbury,constituency,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,FALSE
+Vale of Glamorgan,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE
+Walsall and Bloxwich,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE
+West Bromwich,constituency,TRUE,TRUE,TRUE,FALSE,TRUE,TRUE,TRUE
+West Finchley,ward,TRUE,FALSE,TRUE,FALSE,TRUE,TRUE,FALSE
+Wigan,constituency,TRUE,FALSE,TRUE,FALSE,TRUE,TRUE,FALSE
+Woodhouse,ward,TRUE,FALSE,TRUE,FALSE,TRUE,TRUE,FALSE

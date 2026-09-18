@@ -1,0 +1,110 @@
+{
+  "location": "blakenall",
+  "location_display_name": "Blakenall",
+  "generated_at": "2026-08-12T15:10:30.789985+00:00",
+  "source_pipeline_name": "clacton",
+  "source_pipeline_completed_at": "2026-08-12T15:10:25.839000+00:00",
+  "date_from": "2026-07-28",
+  "date_to": "2026-08-13",
+  "date_min": "2026-07-28",
+  "date_max": "2026-08-12",
+  "aggregate_rows": 261,
+  "reaction_types": [
+    "like",
+    "love",
+    "haha",
+    "wow",
+    "sad",
+    "angry"
+  ],
+  "aggregate_file": "opinion_history.csv",
+  "categories": [
+    {
+      "name": "Benefits",
+      "slug": "benefits",
+      "comments_file": "comments/benefits.csv",
+      "num_comments": 3,
+      "num_reactions": 7
+    },
+    {
+      "name": "Businesses",
+      "slug": "businesses",
+      "comments_file": "comments/businesses.csv",
+      "num_comments": 114,
+      "num_reactions": 486
+    },
+    {
+      "name": "Crime",
+      "slug": "crime",
+      "comments_file": "comments/crime.csv",
+      "num_comments": 129,
+      "num_reactions": 494
+    },
+    {
+      "name": "Cultural issues",
+      "slug": "cultural-issues",
+      "comments_file": "comments/cultural-issues.csv",
+      "num_comments": 16,
+      "num_reactions": 28
+    },
+    {
+      "name": "Economy",
+      "slug": "economy",
+      "comments_file": "comments/economy.csv",
+      "num_comments": 3,
+      "num_reactions": 3
+    },
+    {
+      "name": "Education",
+      "slug": "education",
+      "comments_file": "comments/education.csv",
+      "num_comments": 3,
+      "num_reactions": 0
+    },
+    {
+      "name": "Environmental",
+      "slug": "environmental",
+      "comments_file": "comments/environmental.csv",
+      "num_comments": 52,
+      "num_reactions": 81
+    },
+    {
+      "name": "Health",
+      "slug": "health",
+      "comments_file": "comments/health.csv",
+      "num_comments": 15,
+      "num_reactions": 12
+    },
+    {
+      "name": "Housing",
+      "slug": "housing",
+      "comments_file": "comments/housing.csv",
+      "num_comments": 47,
+      "num_reactions": 130
+    },
+    {
+      "name": "Immigration",
+      "slug": "immigration",
+      "comments_file": "comments/immigration.csv",
+      "num_comments": 1,
+      "num_reactions": 0
+    },
+    {
+      "name": "Local Government",
+      "slug": "local-government",
+      "comments_file": "comments/local-government.csv",
+      "num_comments": 70,
+      "num_reactions": 96
+    },
+    {
+      "name": "Transport",
+      "slug": "transport",
+      "comments_file": "comments/transport.csv",
+      "num_comments": 10,
+      "num_reactions": 5
+    }
+  ],
+  "skipped_rows": 0,
+  "daily_activity_file": "daily_activity.csv",
+  "daily_activity_rows": 49
+}

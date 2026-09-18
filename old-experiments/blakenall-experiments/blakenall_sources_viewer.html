@@ -1,0 +1,479 @@
+<title>Blakenall group sources</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --card: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --ring: rgba(11, 11, 11, 0.10);
+    --bar: #2a78d6;
+    --bar-hover: #1c5cab;
+    --s1: #2a78d6;
+    --s2: #eb6834;
+    --s3: #1baf7a;
+    --s4: #eda100;
+    --s5: #e87ba4;
+    --s6: #008300;
+    --s7: #4a3aa7;
+    --s8: #e34948;
+    --chip-bg: #f0efec;
+    --tip-bg: #0b0b0b;
+    --tip-ink: #fcfcfb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --card: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --ring: rgba(255, 255, 255, 0.10);
+      --bar: #3987e5;
+      --bar-hover: #6da7ec;
+      --s1: #3987e5;
+      --s2: #d95926;
+      --s3: #199e70;
+      --s4: #c98500;
+      --s5: #d55181;
+      --s6: #008300;
+      --s7: #9085e9;
+      --s8: #e66767;
+      --chip-bg: #262624;
+      --tip-bg: #fcfcfb;
+      --tip-ink: #0b0b0b;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --card: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --ring: rgba(255, 255, 255, 0.10);
+    --bar: #3987e5;
+    --bar-hover: #6da7ec;
+    --s1: #3987e5;
+    --s2: #d95926;
+    --s3: #199e70;
+    --s4: #c98500;
+    --s5: #d55181;
+    --s6: #008300;
+    --s7: #9085e9;
+    --s8: #e66767;
+    --chip-bg: #262624;
+    --tip-bg: #fcfcfb;
+    --tip-ink: #0b0b0b;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 32px 20px 64px; display: flex; flex-direction: column; gap: 20px; }
+
+  header .eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 6px;
+  }
+  header h1 {
+    margin: 0 0 8px;
+    font-family: "Avenir Next", "Seravek", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 27px; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance;
+  }
+  header p { margin: 0; color: var(--ink-2); max-width: 66ch; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+  .tile {
+    background: var(--card); border: 1px solid var(--ring); border-radius: 6px;
+    padding: 14px 16px 12px;
+  }
+  .tile .k { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .tile .v { font-size: 26px; font-weight: 600; line-height: 1.2; margin-top: 2px; }
+  .tile .s { font-size: 12.5px; color: var(--ink-2); }
+
+  .charts { display: grid; grid-template-columns: minmax(300px, 5fr) minmax(320px, 7fr); gap: 12px; }
+  .charts-b { grid-template-columns: minmax(340px, 7fr) minmax(280px, 5fr); }
+  @media (max-width: 760px) { .charts, .charts-b { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--ring); border-radius: 6px;
+    padding: 18px 18px 14px; min-width: 0;
+  }
+  .card h2 { margin: 0 0 2px; font-size: 15.5px; font-weight: 600; }
+  .card .sub { margin: 0 0 14px; font-size: 12.5px; color: var(--ink-2); }
+  .card .note { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+
+  .donut-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .legend { display: flex; flex-direction: column; gap: 7px; font-size: 13px; min-width: 180px; flex: 1; }
+  .legend .row { display: flex; align-items: baseline; gap: 8px; cursor: pointer; border-radius: 4px; padding: 2px 4px; }
+  .legend .row:hover { background: var(--chip-bg); }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; align-self: center; }
+  .legend .lab { color: var(--ink-2); }
+  .legend .n { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  svg text { font: 12px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .bar-rect { cursor: pointer; }
+  .chart-scroll { overflow-x: auto; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    background: var(--chip-bg); border: 1px solid var(--ring); border-radius: 999px;
+    padding: 4px 12px; font-size: 13px; color: var(--ink-2);
+  }
+  .chip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .filterbar { display: none; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+  .filterbar.on { display: flex; }
+  .filterbar .clear {
+    border: 1px solid var(--ring); background: var(--card); color: var(--ink);
+    border-radius: 999px; padding: 3px 12px; font-size: 12.5px; cursor: pointer;
+  }
+  .filterbar .clear:hover { background: var(--chip-bg); }
+  .filterbar .clear:focus-visible, .legend .row:focus-visible, .tagchip:focus-visible,
+  .bar-rect:focus-visible, .slice:focus-visible {
+    outline: 2px solid var(--bar); outline-offset: 2px;
+  }
+
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th {
+    text-align: left; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--baseline);
+    white-space: nowrap;
+  }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td a { color: var(--ink); text-decoration: none; font-weight: 600; }
+  td a:hover { text-decoration: underline; text-decoration-color: var(--bar); }
+  .where { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+  .tagcell { display: flex; flex-wrap: wrap; gap: 4px; max-width: 340px; }
+  .tagchip {
+    background: var(--chip-bg); border-radius: 999px; padding: 1px 9px; font-size: 11.5px;
+    color: var(--ink-2); cursor: pointer; border: 1px solid transparent;
+  }
+  .tagchip:hover { border-color: var(--bar); color: var(--ink); }
+  .tagchip.active { background: var(--bar); color: #fcfcfb; }
+  .srccell { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  #tip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--tip-bg); color: var(--tip-ink);
+    border-radius: 5px; padding: 7px 10px; font-size: 12.5px; max-width: 300px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25); line-height: 1.4;
+  }
+  #tip .t-head { font-weight: 600; }
+  #tip .t-dim { opacity: 0.75; }
+
+  footer { font-size: 12px; color: var(--muted); max-width: 78ch; }
+  footer p { margin: 4px 0; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .bar-rect, .slice { transition: opacity 0.12s ease; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Libby search &middot; one-off data view &middot; Walsall</p>
+    <h1>What anchors Blakenall&rsquo;s Facebook groups?</h1>
+    <p><span id="n-head">26</span> community groups aggregated from two ward scrapes (<strong>Harden, Goscote &amp; Ryecroft</strong> and
+      <strong>Bloxwich East &amp; Blakenall Heath</strong>) and the <strong>Walsall and Bloxwich</strong> constituency scrape,
+      traced back to the search targets that found them.</p>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="charts">
+    <div class="card">
+      <h2>Where each group was found</h2>
+      <p class="sub">Every group counted once &mdash; the segments sum to <span id="n-donut">26</span>.</p>
+      <div class="donut-row">
+        <svg id="donut" width="190" height="190" viewBox="0 0 190 190" role="img" aria-label="Donut chart of groups by scrape provenance"></svg>
+        <div class="legend" id="donut-legend"></div>
+      </div>
+      <p class="note">Click a segment or legend row to filter the table below.</p>
+    </div>
+    <div class="card">
+      <h2>What the winning searches were anchored to</h2>
+      <p class="sub">Groups found per anchor type. Overlaps allowed &mdash; a group found by several searches counts under each anchor.</p>
+      <div class="chart-scroll"><svg id="bars" role="img" aria-label="Bar chart of groups found per anchor type"></svg></div>
+      <p class="note">Anchors describe the <em>searches</em> that surfaced a group, not the group itself.</p>
+    </div>
+  </div>
+
+  <div class="charts charts-b">
+    <div class="card">
+      <h2>Anchor mix</h2>
+      <p class="sub">Each slice is an anchor type&rsquo;s share of all <span id="n-links"></span> group&ndash;anchor
+        pairs &mdash; a group counts once per anchor that found it, so this is the mix of what worked, not a split of the groups.</p>
+      <div class="donut-row">
+        <svg id="anchor-pie" width="190" height="190" viewBox="0 0 190 190" role="img" aria-label="Donut chart of anchor types by share of group-anchor pairs"></svg>
+        <div class="legend" id="anchor-legend"></div>
+      </div>
+      <p class="note">Click a slice to filter the table below.</p>
+    </div>
+    <div class="card">
+      <h2>Where the search targets came from</h2>
+      <p class="sub">Groups reached by each targeting source. Overlaps allowed.</p>
+      <div class="chips" id="src-chips"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>All <span id="n-table">26</span> groups</h2>
+    <p class="sub">Sorted by members. Click any anchor chip to filter.</p>
+    <div class="filterbar" id="filterbar">
+      <span id="filterlabel"></span>
+      <button class="clear" id="clearfilter" type="button">Clear filter</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Group</th><th class="num">Members</th><th class="num">Posts/mo</th>
+            <th>Found in</th><th>Anchors</th><th>Sources</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    <p><strong>Reading notes.</strong> The Harden scrape predates source tagging, so its llm/overpass split was
+      reconstructed from a fresh OpenStreetMap boundary query rather than recorded at scrape time.
+      Two groups (&ldquo;Beechdale Community Partnership&rdquo;, &ldquo;Walsall/Bloxwich Community Food Bank&rdquo;) appear in the
+      aggregate but in none of the three scrape files on disk, so they carry no anchors.
+      Two group names arrived encoding-damaged from the scrape and are shown cleaned; one was unreadable and is named by its URL.</p>
+    <p>Source: <code>blakenall_sources.csv</code>, built 14&nbsp;Aug&nbsp;2026 from the scrape files in <code>uk/data/scraped/</code>.</p>
+  </footer>
+</div>
+
+<div id="tip"></div>
+
+<script>
+const DATA = [{"name": "Bloxwich Chit Chat", "url": "https://www.facebook.com/groups/2369573043212672/", "members": 39000, "posts": 600, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Harden, Goscote & Ryecroft (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "highstreet", "locality", "park", "place_of_worship", "residential_road", "school", "town"], "sources": ["llm", "overpass"]}, {"name": "(name unreadable — group 1715826728751175)", "url": "https://www.facebook.com/groups/1715826728751175/", "members": 32000, "posts": 600, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality", "park"], "sources": ["llm"]}, {"name": "Used items Walsall", "url": "https://www.facebook.com/groups/used.items.walsall/", "members": 15000, "posts": 60, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["locality", "school"], "sources": ["llm"]}, {"name": "Mossley GB", "url": "https://www.facebook.com/groups/118723864940258/", "members": 14000, "posts": 180, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality"], "sources": ["llm"]}, {"name": "Visit Walsall", "url": "https://www.facebook.com/groups/walsallevents/", "members": 9100, "posts": 120, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "highstreet", "locality", "place_of_worship", "residential_road"], "sources": ["llm", "overpass"]}, {"name": "Walsall Asian Community News &amp; Views", "url": "https://www.facebook.com/groups/1149747311896059/", "members": 7000, "posts": 2400, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "locality", "place_of_worship", "school"], "sources": ["llm", "overpass"]}, {"name": "Bloxwich Community Group", "url": "https://www.facebook.com/groups/846204072588201/", "members": 5100, "posts": 900, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Harden, Goscote & Ryecroft (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "highstreet", "locality", "park", "place_of_worship", "residential_road", "school", "town"], "sources": ["llm", "overpass"]}, {"name": "Mossley Matters - The Local Hub", "url": "https://www.facebook.com/groups/376524232718858/", "members": 5100, "posts": 90, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality"], "sources": ["llm"]}, {"name": "Walsall Public Group", "url": "https://www.facebook.com/groups/1619774512107836/", "members": 4200, "posts": 2700, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "highstreet", "locality", "residential_road", "school"], "sources": ["llm", "overpass"]}, {"name": "Events in Walsall", "url": "https://www.facebook.com/groups/129738519274885/", "members": 3700, "posts": 300, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Harden, Goscote & Ryecroft (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "highstreet", "locality", "residential_road"], "sources": ["llm", "overpass"]}, {"name": "Beechdale, Birchills, Leamore and Reedswood.", "url": "https://www.facebook.com/groups/654222854724242/", "members": 3000, "posts": 240, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality"], "sources": ["llm"]}, {"name": "Mossley Local Business Group", "url": "https://www.facebook.com/groups/728983467125166/", "members": 2700, "posts": 300, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality"], "sources": ["llm"]}, {"name": "Walsall Pets between Birmingham &amp; Wolverhampton West Mids lost found", "url": "https://www.facebook.com/groups/796880810390498/", "members": 2200, "posts": 120, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality", "park"], "sources": ["llm"]}, {"name": "Dudley&#x27;s Field&#x27;s Chat/New&#x27;s", "url": "https://www.facebook.com/groups/211109675211723/", "members": 1800, "posts": 210, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality"], "sources": ["llm"]}, {"name": "Beechdale Community Partnership", "url": "https://www.facebook.com/groups/1457262554850677/", "members": 1300, "posts": 210, "found_in": [], "tags": [], "sources": []}, {"name": "Postcode Pets WS- Walsall Area Missing &amp; Found Dogs&amp; CatsW.Midlands UK", "url": "https://www.facebook.com/groups/362541725732804/", "members": 1300, "posts": 90, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality", "park"], "sources": ["llm"]}, {"name": "Walsall/Bloxwich Community Food Bank", "url": "https://www.facebook.com/groups/2764712120327454/", "members": 1000, "posts": 120, "found_in": [], "tags": [], "sources": []}, {"name": "Bloxwich gossip and updates", "url": "https://www.facebook.com/groups/1517444013724338/", "members": 866, "posts": 60, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Harden, Goscote & Ryecroft (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "highstreet", "locality", "park", "place_of_worship", "residential_road", "school", "town"], "sources": ["llm", "overpass"]}, {"name": "Westmidlands Worcestershire, Birmingham Walsall Notice Board", "url": "https://www.facebook.com/groups/franchecomommunity/", "members": 849, "posts": 120, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["highstreet", "locality"], "sources": ["llm"]}, {"name": "FB EXPRESS walsall", "url": "https://www.facebook.com/groups/1068083343933182/", "members": 809, "posts": 90, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "locality", "residential_road", "school"], "sources": ["llm", "overpass"]}, {"name": "NEW HALF PRICE MADNESS (Walsall and surrounding areas)", "url": "https://www.facebook.com/groups/1138054657765010/", "members": 709, "posts": 180, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["locality"], "sources": ["llm"]}, {"name": "spotted help Bloxwich (Walsall)", "url": "https://www.facebook.com/groups/614351699115120/", "members": 689, "posts": 150, "found_in": ["Walsall and Bloxwich (constituency)"], "tags": ["highstreet", "town"], "sources": ["llm"]}, {"name": "Walsall Events", "url": "https://www.facebook.com/groups/226235949920075/", "members": 570, "posts": 270, "found_in": ["Harden, Goscote & Ryecroft (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["locality"], "sources": ["llm"]}, {"name": "Waterside Catholic Parish", "url": "https://www.facebook.com/groups/443496315376685/", "members": 365, "posts": 60, "found_in": ["Harden, Goscote & Ryecroft (ward)"], "tags": ["place_of_worship"], "sources": ["overpass"]}, {"name": "Local Businesses Bloxwich And Surrounding Areas", "url": "https://www.facebook.com/groups/576626699065206/", "members": 356, "posts": 210, "found_in": ["Bloxwich East & Blakenall Heath (ward)", "Harden, Goscote & Ryecroft (ward)", "Walsall and Bloxwich (constituency)"], "tags": ["community_centre", "highstreet", "locality", "park", "residential_road", "town"], "sources": ["llm", "overpass"]}, {"name": "Bloxwich and Walsall Trades page", "url": "https://www.facebook.com/groups/4066748250275076/", "members": 89, "posts": 120, "found_in": ["Bloxwich East & Blakenall Heath (ward)"], "tags": ["school"], "sources": ["llm"]}];
+
+const WARD_H = "Harden, Goscote & Ryecroft (ward)";
+const WARD_B = "Bloxwich East & Blakenall Heath (ward)";
+const CONST = "Walsall and Bloxwich (constituency)";
+const SHORT = { [WARD_H]: "Harden G&R", [WARD_B]: "Bloxwich E&BH", [CONST]: "Constituency" };
+
+const fmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k" : String(n);
+const fmtFull = n => n.toLocaleString("en-GB");
+
+/* ── derive ─────────────────────────────────────────── */
+function provenance(row) {
+  const w = row.found_in.includes(WARD_H) || row.found_in.includes(WARD_B);
+  const c = row.found_in.includes(CONST);
+  if (w && c) return "Ward + constituency";
+  if (c) return "Constituency only";
+  if (w) return "Ward scrape only";
+  return "Not in any scrape";
+}
+const PROV_ORDER = ["Ward + constituency", "Constituency only", "Ward scrape only", "Not in any scrape"];
+const PROV_COLOR = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
+
+DATA.forEach(r => { r.prov = provenance(r); });
+
+const tagCounts = {}, tagGroups = {};
+DATA.forEach(r => r.tags.forEach(t => {
+  tagCounts[t] = (tagCounts[t] || 0) + 1;
+  (tagGroups[t] = tagGroups[t] || []).push(r.name);
+}));
+const TAGS = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
+
+const srcCounts = {};
+DATA.forEach(r => r.sources.forEach(s => { srcCounts[s] = (srcCounts[s] || 0) + 1; }));
+
+/* ── tiles ──────────────────────────────────────────── */
+for (const id of ["n-head", "n-donut", "n-table"])
+  document.getElementById(id).textContent = DATA.length;
+
+const totalMembers = DATA.reduce((a, r) => a + r.members, 0);
+const untraced = DATA.filter(r => r.prov === "Not in any scrape").length;
+document.getElementById("tiles").innerHTML = [
+  ["Groups", DATA.length, "in the Blakenall aggregate"],
+  ["Total members", fmt(totalMembers), "across all 26 groups"],
+  ["Top anchor", TAGS[0], `found ${tagCounts[TAGS[0]]} of ${DATA.length} groups`],
+  ["Untraced", untraced, "in no scrape file on disk"],
+].map(([k, v, s]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join("");
+
+/* ── tooltip ────────────────────────────────────────── */
+const tip = document.getElementById("tip");
+function showTip(html, ev) {
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  moveTip(ev);
+}
+function moveTip(ev) {
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - pad;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+/* ── filter state ───────────────────────────────────── */
+let filter = null; // {kind:"tag"|"prov", value}
+function setFilter(kind, value) {
+  filter = (filter && filter.kind === kind && filter.value === value) ? null : { kind, value };
+  renderTable();
+  const bar = document.getElementById("filterbar");
+  if (filter) {
+    bar.classList.add("on");
+    document.getElementById("filterlabel").textContent =
+      filter.kind === "tag" ? `Showing groups found by "${filter.value}" searches` : `Showing: ${filter.value}`;
+  } else bar.classList.remove("on");
+  document.querySelectorAll(".tagchip").forEach(el =>
+    el.classList.toggle("active", !!filter && filter.kind === "tag" && el.dataset.tag === filter.value));
+}
+document.getElementById("clearfilter").addEventListener("click", () => {
+  filter = null;
+  renderTable();
+  document.getElementById("filterbar").classList.remove("on");
+  document.querySelectorAll(".tagchip.active").forEach(el => el.classList.remove("active"));
+});
+
+/* ── donuts ─────────────────────────────────────────── */
+/* items: [{label, count, color}] — draws slices + legend, wires tooltip,
+   click-to-filter, and keyboard activation. */
+function drawDonut(svgId, legendId, items, centerSub, tipLine, onPick) {
+  const svg = document.getElementById(svgId);
+  const total = items.reduce((a, it) => a + it.count, 0);
+  const cx = 95, cy = 95, r = 72, inner = 44;
+  let a0 = -Math.PI / 2, paths = "";
+  items.forEach((it, i) => {
+    if (!it.count) return;
+    const a1 = a0 + (it.count / total) * Math.PI * 2;
+    const large = (a1 - a0) > Math.PI ? 1 : 0;
+    const p = (a, rad) => `${cx + rad * Math.cos(a)},${cy + rad * Math.sin(a)}`;
+    paths += `<path class="slice" data-i="${i}" tabindex="0" role="button"
+      aria-label="${it.label}: ${it.count}"
+      d="M${p(a0, r)} A${r},${r} 0 ${large} 1 ${p(a1, r)} L${p(a1, inner)} A${inner},${inner} 0 ${large} 0 ${p(a0, inner)} Z"
+      fill="${it.color}" stroke="var(--card)" stroke-width="2" style="cursor:pointer"></path>`;
+    a0 = a1;
+  });
+  svg.innerHTML = paths +
+    `<text x="${cx}" y="${cy - 3}" text-anchor="middle" fill="var(--ink)" style="font-size:26px;font-weight:600">${total}</text>` +
+    `<text x="${cx}" y="${cy + 16}" text-anchor="middle" fill="var(--muted)" style="font-size:11px;letter-spacing:0.08em">${centerSub}</text>`;
+
+  document.getElementById(legendId).innerHTML = items.map((it, i) =>
+    `<div class="row" data-i="${i}" tabindex="0" role="button">
+       <span class="swatch" style="background:${it.color}"></span>
+       <span class="lab">${it.label}</span><span class="n">${it.count}</span>
+     </div>`).join("");
+
+  document.querySelectorAll(`#${svgId} .slice, #${legendId} .row`).forEach(el => {
+    const i = +el.dataset.i;
+    el.addEventListener("mousemove", ev => showTip(
+      `<div class="t-head">${items[i].label}</div>${tipLine(items[i], total)}`, ev));
+    el.addEventListener("mouseleave", hideTip);
+    el.addEventListener("click", () => onPick(items[i]));
+    el.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onPick(items[i]); } });
+  });
+}
+
+drawDonut("donut", "donut-legend",
+  PROV_ORDER.map((p, i) => ({ label: p, count: DATA.filter(r => r.prov === p).length, color: PROV_COLOR[i], prov: p })),
+  "GROUPS",
+  (it, total) => `${it.count} of ${total} groups (${Math.round(it.count / total * 100)}%)`,
+  it => setFilter("prov", it.prov));
+
+const SLOT_COLORS = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)", "var(--s6)", "var(--s7)", "var(--s8)"];
+// 8 fixed color slots, never cycled — if the data ever grows past 8 anchor
+// types, the smallest fold into a muted "other" slice instead.
+const pieTags = TAGS.length <= 8 ? TAGS : TAGS.slice(0, 7);
+const pieItems = pieTags.map((t, i) => ({ label: t.replace(/_/g, " "), count: tagCounts[t], color: SLOT_COLORS[i], tag: t }));
+if (TAGS.length > 8) pieItems.push({
+  label: "other", color: "var(--muted)",
+  count: TAGS.slice(7).reduce((a, t) => a + tagCounts[t], 0),
+});
+drawDonut("anchor-pie", "anchor-legend", pieItems,
+  "PAIRS",
+  (it, total) => `${it.count} of ${total} group&ndash;anchor pairs (${Math.round(it.count / total * 100)}%)${it.tag ? ` &mdash; found ${it.count} groups` : ""}`,
+  it => { if (it.tag) setFilter("tag", it.tag); });
+document.getElementById("n-links").textContent = TAGS.reduce((a, t) => a + tagCounts[t], 0);
+
+/* ── anchor bars ────────────────────────────────────── */
+(function bars() {
+  const svg = document.getElementById("bars");
+  const rowH = 30, labelW = 132, valueW = 34, W = 520, H = TAGS.length * rowH + 8;
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const max = tagCounts[TAGS[0]];
+  const plotW = W - labelW - valueW - 8;
+  let out = "";
+  // hairline grid at nice intervals
+  for (let g = 5; g <= max; g += 5)
+    out += `<line x1="${labelW + g / max * plotW}" y1="0" x2="${labelW + g / max * plotW}" y2="${H - 4}" stroke="var(--grid)" stroke-width="1"></line>`;
+  out += `<line x1="${labelW}" y1="0" x2="${labelW}" y2="${H - 4}" stroke="var(--baseline)" stroke-width="1"></line>`;
+  TAGS.forEach((t, i) => {
+    const y = i * rowH + 5, h = rowH - 11;
+    const w = tagCounts[t] / max * plotW;
+    out += `<text x="${labelW - 8}" y="${y + h / 2 + 4}" text-anchor="end" fill="var(--ink-2)">${t.replace(/_/g, " ")}</text>`;
+    out += `<path class="bar-rect" data-tag="${t}" tabindex="0" role="button" aria-label="${t}: ${tagCounts[t]} groups"
+      d="M${labelW},${y} h${Math.max(w - 4, 0)} a4,4 0 0 1 4,4 v${h - 8} a4,4 0 0 1 -4,4 h-${Math.max(w - 4, 0)} Z"
+      fill="var(--bar)"></path>`;
+    out += `<text x="${labelW + w + 7}" y="${y + h / 2 + 4}" fill="var(--ink)" style="font-weight:600">${tagCounts[t]}</text>`;
+  });
+  svg.innerHTML = out;
+
+  document.querySelectorAll("#bars .bar-rect").forEach(el => {
+    const t = el.dataset.tag;
+    el.addEventListener("mousemove", ev => {
+      const names = tagGroups[t];
+      const shown = names.slice(0, 7).map(n => `&middot; ${n}`).join("<br>");
+      const more = names.length > 7 ? `<br><span class="t-dim">&hellip;and ${names.length - 7} more</span>` : "";
+      showTip(`<div class="t-head">${t.replace(/_/g, " ")} &mdash; ${names.length} groups</div>${shown}${more}`, ev);
+    });
+    el.addEventListener("mouseleave", hideTip);
+    el.addEventListener("click", () => setFilter("tag", t));
+    el.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setFilter("tag", t); } });
+  });
+})();
+
+/* ── source chips ───────────────────────────────────── */
+document.getElementById("src-chips").innerHTML =
+  Object.entries(srcCounts).sort((a, b) => b[1] - a[1])
+    .map(([s, n]) => `<span class="chip">${s} &mdash; <b>${n}</b></span>`).join("") +
+  (untraced ? `<span class="chip">no source on record &mdash; <b>${untraced}</b></span>` : "");
+
+/* ── table ──────────────────────────────────────────── */
+function renderTable() {
+  const rows = DATA
+    .filter(r => !filter
+      || (filter.kind === "tag" && r.tags.includes(filter.value))
+      || (filter.kind === "prov" && r.prov === filter.value))
+    .sort((a, b) => b.members - a.members);
+  document.getElementById("tbody").innerHTML = rows.map(r => `
+    <tr>
+      <td><a href="${r.url}" target="_blank" rel="noopener">${r.name}</a></td>
+      <td class="num">${fmtFull(r.members)}</td>
+      <td class="num">${r.posts ? fmtFull(r.posts) : "&ndash;"}</td>
+      <td class="where" title="${r.found_in.join("; ") || "not in any scrape"}">${r.found_in.length ? r.found_in.map(f => SHORT[f] || f).join(" + ") : "&mdash;"}</td>
+      <td><div class="tagcell">${r.tags.map(t =>
+        `<span class="tagchip${filter && filter.kind === "tag" && filter.value === t ? " active" : ""}" data-tag="${t}" tabindex="0" role="button">${t.replace(/_/g, " ")}</span>`).join("") || "&mdash;"}</div></td>
+      <td class="srccell">${r.sources.join(", ") || "&mdash;"}</td>
+    </tr>`).join("");
+  document.querySelectorAll("#tbody .tagchip").forEach(el => {
+    el.addEventListener("click", () => setFilter("tag", el.dataset.tag));
+    el.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setFilter("tag", el.dataset.tag); } });
+  });
+}
+renderTable();
+</script>

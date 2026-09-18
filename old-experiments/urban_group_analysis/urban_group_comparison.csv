@@ -1,0 +1,36 @@
+constituency,group_count,source,urban_pct,rural_pct,highly_rural_pct,label
+Amber Valley,32,inputs,83.58,10.21,6.21,Urban with rural areas
+Bassetlaw,47,inputs,66.03,19.71,14.27,Urban with rural areas
+Bolsover,31,groups,54.57,35.3,10.13,Rural
+Cardiff East,18,inputs,100.0,0.0,0.0,Urban
+Cardiff North,22,groups,100.0,0.0,0.0,Urban
+Chipping Barnet,20,groups,100.0,0.0,0.0,Urban
+Clacton,20,groups,72.28,14.92,12.8,Urban with rural areas
+Corby and East Northamptonshire,54,inputs,56.5,29.6,13.9,Rural
+Derby North,21,inputs,100.0,0.0,0.0,Urban
+Derby South,44,inputs,100.0,0.0,0.0,Urban
+Earley and Woodley,12,groups,94.73,2.44,2.83,Urban
+Erewash,39,inputs,100.0,0.0,0.0,Urban
+Filton and Bradley Stoke,16,inputs,94.18,2.42,3.4,Urban
+Finchley and Golders Green,23,inputs,100.0,0.0,0.0,Urban
+Hampstead and Highgate,15,inputs,100.0,0.0,0.0,Urban
+Hyndburn,30,inputs,93.09,6.91,0.0,Urban
+Knowsley,25,groups,100.0,0.0,0.0,Urban
+Lincoln,33,groups,91.63,8.37,0.0,Urban
+Livingston,16,groups,79.22,15.28,5.5,Urban with rural areas
+Makerfield,16,groups,98.49,1.51,0.0,Urban
+Manchester Central,20,groups,100.0,0.0,0.0,Urban
+Mansfield,43,groups,87.21,12.79,0.0,Urban with rural areas
+Mid Derbyshire,46,inputs,96.02,0.0,3.98,Urban
+Midlothian,30,groups,75.54,7.43,17.03,Urban with rural areas
+Northampton South,38,inputs,100.0,0.0,0.0,Urban
+Norwich North,30,groups,100.0,0.0,0.0,Urban
+Nottingham North and Kimberley,26,inputs,100.0,0.0,0.0,Urban
+"Pontefract, Castleford and Knottingley",20,inputs,98.53,0.0,1.47,Urban
+Pontypridd,17,inputs,73.18,26.82,0.0,Urban with rural areas
+Sittingbourne and Sheppey,59,groups,81.14,7.82,11.05,Urban with rural areas
+South Derbyshire,34,groups,63.32,21.1,15.59,Rural
+Tipton and Wednesbury,19,inputs,100.0,0.0,0.0,Urban
+Vale of Glamorgan,45,inputs,73.31,10.7,16.0,Urban with rural areas
+Walsall and Bloxwich,27,inputs,100.0,0.0,0.0,Urban
+West Bromwich,17,groups,100.0,0.0,0.0,Urban
