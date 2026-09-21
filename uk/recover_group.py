@@ -10,8 +10,9 @@ area's output — Clacton-etc/groups/ if it's already been promoted, else
 Clacton-etc/inputs/ (or inputs/wards/) if it's still staged.
 
 Three things happen, in order, and only if the group isn't already there:
-  1. The row is appended to that groups_<Name>.csv (a .bak backup of the
-     file is written first).
+  1. The row is appended to that groups_<Name>.csv. No backup file is
+     written — Clacton-etc is a git repo, so the prior version is already
+     recoverable from history.
   2. group_log.csv's row for this group is updated to accepted="Y",
      stage="recovered".
   3. The decision is recorded in group_overrides.csv, so a real future
@@ -28,7 +29,6 @@ Usage:
 
 import argparse
 import logging
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -168,9 +168,6 @@ def recover(area_type: str, area_name: str, url: str, note: str = "") -> dict:
     if url in set(existing["url"]):
         return {"ok": True, "already_present": True, "message": f"{name!r} is already present in {target}"}
 
-    backup_path = target.with_suffix(target.suffix + ".bak")
-    shutil.copy2(target, backup_path)
-
     new_row = {col: row.get(col, "") for col in FINAL_COLUMNS}
     new_row["first_assessment"] = "Manually recovered"
     if area_type == "ward":
@@ -190,7 +187,7 @@ def recover(area_type: str, area_name: str, url: str, note: str = "") -> dict:
     )
     _append_override(area_type, area_name, url, note)
 
-    logger.info("Recovered %r into %s (backup at %s)", name, target, backup_path)
+    logger.info("Recovered %r into %s", name, target)
     return {"ok": True, "already_present": False, "message": f"Recovered {name!r} into {target}", "file": str(target)}
 
 
