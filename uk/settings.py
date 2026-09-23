@@ -39,6 +39,12 @@ WARD_SCRAPED_DIR: Path = SCRAPED_DIR / "wards"
 OUTPUT_DIR: Path = _THIS_DIR / "output"
 INTERMEDIATE_DIR: Path = OUTPUT_DIR / "intermediate"
 WARD_OUTPUT_DIR: Path = OUTPUT_DIR / "wards"
+# Custom/informal multi-constituency regions (e.g. "North London", "Greater
+# Manchester") — see uk/pipeline_custom.py's module docstring. No boundary
+# file, no scrape of its own: a region reuses each member constituency's
+# already-scraped data (via uk.pipeline.reconstruct_constituency_candidates),
+# so there is no CUSTOM_SEARCH_TARGETS_DIR/CUSTOM_SCRAPED_DIR to match wards'.
+CUSTOM_OUTPUT_DIR: Path = OUTPUT_DIR / "custom"
 ABOUT_PAGES_DIR: Path = DATA_DIR / "about_pages"
 WARD_ABOUT_PAGES_DIR: Path = ABOUT_PAGES_DIR / "wards"
 
@@ -51,6 +57,7 @@ WARD_SCRAPED_DIR.mkdir(exist_ok=True)
 OVERTURE_DIR.mkdir(exist_ok=True)
 WARD_REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
 WARD_OUTPUT_DIR.mkdir(exist_ok=True)
+CUSTOM_OUTPUT_DIR.mkdir(exist_ok=True)
 ABOUT_PAGES_DIR.mkdir(exist_ok=True)
 WARD_ABOUT_PAGES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -75,6 +82,16 @@ REDO_GROUPS_PATH = SCRAPED_DIR / "redo_groups.csv"
 NEW_SCRAPE_PATH = SCRAPED_DIR / "master_constituency_place_data_file.csv"
 DESCRIPTIONS_PATH = DATA_DIR / "descriptions.csv"
 WARD_DESCRIPTIONS_PATH = DATA_DIR / "ward_descriptions.csv"
+# uk/pipeline_custom.py's cache of the region-level (not per-constituency)
+# overview text — member constituencies keep reusing DESCRIPTIONS_PATH above,
+# unmodified, via libby_core.descriptions.ensure_description.
+CUSTOM_AREA_DESCRIPTIONS_PATH = DATA_DIR / "custom_area_descriptions.csv"
+# uk/region_membership.py's cache of which constituencies (PCON24NM) an
+# LLM has resolved as belonging to each custom area — one row per
+# (area_name, constituency) pair, upserted per area so re-resolving one
+# region never touches another's rows. Editable by hand if a lookup needs
+# correcting, same spirit as adhoc_wards.csv.
+CUSTOM_REGION_MEMBERSHIP_PATH = DATA_DIR / "custom_area_membership.csv"
 
 # One log, every group, every area, both pipelines: for each group ever
 # considered, whether it was accepted into a final groups_*.csv and why (or

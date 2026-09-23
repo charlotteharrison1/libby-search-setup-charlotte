@@ -17,6 +17,8 @@ Usage:
         --area-name "Holborn and St Pancras" --note "not actually local"
     python -m uk.remove_group --url <group url> --area-type ward \\
         --area-name "Garden Suburb (Barnet)"
+    python -m uk.remove_group --url <group url> --area-type custom \\
+        --area-name "North London"
 """
 
 import argparse
@@ -61,8 +63,8 @@ def _update_group_log_row_removed(area_type: str, area_name: str, url: str, name
 
 
 def remove(area_type: str, area_name: str, url: str, note: str = "") -> dict:
-    if area_type not in ("constituency", "ward"):
-        raise RemovalError(f"Unknown area_type {area_type!r} (must be 'constituency' or 'ward')")
+    if area_type not in ("constituency", "ward", "custom"):
+        raise RemovalError(f"Unknown area_type {area_type!r} (must be 'constituency', 'ward', or 'custom')")
 
     ward_name = None
     if area_type == "ward":
@@ -97,7 +99,7 @@ def remove(area_type: str, area_name: str, url: str, note: str = "") -> dict:
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--url", required=True, help="The group's Facebook URL, exactly as it appears in group_log.csv")
-    parser.add_argument("--area-type", required=True, choices=["constituency", "ward"])
+    parser.add_argument("--area-type", required=True, choices=["constituency", "ward", "custom"])
     parser.add_argument("--area-name", required=True, help="area_name exactly as it appears in group_log.csv (for a ward, includes the local authority in parens)")
     parser.add_argument("--note", default="", help="Optional note recorded in group_log.csv and group_overrides.csv")
     args = parser.parse_args()

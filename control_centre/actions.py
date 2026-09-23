@@ -67,6 +67,8 @@ def _build_prep_bulk(row, params):
 
 
 def _build_push(row, params):
+    if row["type"] == "custom":
+        raise UnknownAction("Push doesn't apply to custom regions — they have no scrape of their own (see uk/pipeline_custom.py); they reuse each member constituency's already-scraped data.")
     cmd = [str(REPO_ROOT / "sync_scrape.sh"), "push"]
     if row["type"] == "ward":
         cmd.append("--wards")
@@ -75,6 +77,8 @@ def _build_push(row, params):
 
 
 def _build_pull(row, params):
+    if row["type"] == "custom":
+        raise UnknownAction("Pull doesn't apply to custom regions — they have no scrape of their own (see uk/pipeline_custom.py); they reuse each member constituency's already-scraped data.")
     cmd = [str(REPO_ROOT / "sync_scrape.sh"), "pull"]
     if params.get("force"):
         cmd.append("--force")
@@ -97,6 +101,8 @@ def _build_pull_bulk(row, params):
 
 
 def _build_pull_about(row, params):
+    if row["type"] == "custom":
+        raise UnknownAction("Pull-about doesn't apply to custom regions — About-context is scraped per member constituency, not per region.")
     cmd = [str(REPO_ROOT / "pull_about.sh")]
     if row["type"] == "ward":
         cmd.append("--wards")
@@ -105,6 +111,23 @@ def _build_pull_about(row, params):
 
 
 def _build_run_pipeline(row, params):
+    if row["type"] == "custom":
+        # No --input, no scraped file of its own — uk.pipeline_custom pools
+        # each member constituency's already-scraped data itself (see its
+        # module docstring). `force` here means "re-resolve region
+        # membership + regenerate the region overview", not "reprocess" —
+        # there's no per-region resumability cache to bypass (every run
+        # reprocesses fresh, same as uk.pipeline_ward).
+        cmd = ["python3", "-m", "uk.pipeline_custom", "--area", row["name"]]
+        if params.get("stop_before_ai_assessment"):
+            cmd.append("--stop-before-ai-assessment")
+        if params.get("force"):
+            cmd.append("--force-membership")
+        if params.get("about"):
+            cmd.append("--about")
+        elif params.get("context"):
+            cmd.append("--context")
+        return cmd
     if row["type"] == "constituency":
         # Must pass --input explicitly, pointing at this constituency's own
         # pulled scrape (uk/data/scraped/<slug>_search_targets.csv) — the
@@ -134,6 +157,8 @@ def _build_run_pipeline(row, params):
 
 
 def _build_set_scrape_target(row, params):
+    if row["type"] == "custom":
+        raise UnknownAction("Custom regions have no remote scrape target — they have no scrape of their own (see uk/pipeline_custom.py).")
     remote_cmd = f"cd {REMOTE_BASE} && ./set_scrape_target.sh"
     if params.get("force"):
         remote_cmd += " --force"
@@ -157,6 +182,8 @@ def _build_pick_next_scrape_target(row, params):
 
 
 def _build_set_about_target(row, params):
+    if row["type"] == "custom":
+        raise UnknownAction("Custom regions have no remote About-scrape target — About-context is scraped per member constituency, not per region.")
     remote_cmd = f"cd {REMOTE_BASE} && ./set_about_target.sh"
     if params.get("force"):
         remote_cmd += " --force"

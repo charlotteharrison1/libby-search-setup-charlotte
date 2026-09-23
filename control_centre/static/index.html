@@ -228,11 +228,12 @@
 <section>
   <h2>Status <span class="badge" id="areaCount"></span></h2>
   <div class="filter-row">
-    <input id="filterBox" placeholder="Search all constituencies + wards...">
+    <input id="filterBox" placeholder="Search all constituencies + wards + custom regions...">
     <select id="typeFilter">
       <option value="">All types</option>
       <option value="constituency">Constituency</option>
       <option value="ward">Ward</option>
+      <option value="custom">Custom region</option>
     </select>
     <label class="chk"><input type="checkbox" id="showAllToggle"> show all (incl. untouched)</label>
     <button class="btn-secondary" id="exportCsvBtn" type="button">Export CSV</button>
@@ -266,7 +267,7 @@ const PARAM_DEFS = {
     {key: "context", label: "--context"},
     {key: "about", label: "--about"},
     {key: "stop_before_ai_assessment", label: "--stop-before-ai-assessment"},
-    {key: "force", label: "--force (reprocess even if already done — constituencies only)"},
+    {key: "force", label: "--force (constituencies: reprocess even if already done. Custom regions: re-resolve membership + overview)"},
   ],
   set_scrape_target: [{key: "force", label: "--force"}],
   view_scrape_target: [],

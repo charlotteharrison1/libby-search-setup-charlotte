@@ -156,6 +156,7 @@
     <option value="">All types</option>
     <option value="constituency">Constituency</option>
     <option value="ward">Ward</option>
+    <option value="custom">Custom region</option>
   </select>
   <select id="groupLogOutcomeFilter">
     <option value="">All outcomes</option>
@@ -397,9 +398,18 @@ function initAreaPicker() {
   const box = document.getElementById("areaSuggestions");
 
   input.addEventListener("input", () => {
-    if (!input.value.trim()) AREA_FILTER = null;
+    // Typing only narrows the suggestion dropdown (cheap — ~50 distinct
+    // areas); it must NOT re-render the full group log table (thousands of
+    // rows, more since custom regions started pooling multi-constituency
+    // candidate data — see uk/pipeline_custom.py) on every keystroke. Only
+    // clearing the box actually changes the applied filter, so that's the
+    // only case that needs a re-render here — selecting a suggestion
+    // already triggers its own renderGroupLog() below.
     renderAreaSuggestions(input.value);
-    renderGroupLog();
+    if (!input.value.trim() && AREA_FILTER !== null) {
+      AREA_FILTER = null;
+      renderGroupLog();
+    }
   });
   input.addEventListener("focus", () => renderAreaSuggestions(input.value));
   input.addEventListener("click", () => renderAreaSuggestions(input.value));

@@ -3,11 +3,12 @@
 
 No re-scraping, no LLM calls: the group's full row is re-derived from that
 area's own already-scraped CSV (see uk.pipeline.reconstruct_constituency_
-candidates / uk.pipeline_ward.reconstruct_ward_candidates — the same
-combine/aggregate step a normal run does, just without the filtering or AI
+candidates / uk.pipeline_ward.reconstruct_ward_candidates /
+uk.pipeline_custom.reconstruct_custom_candidates — the same combine/
+aggregate step a normal run does, just without the filtering or AI
 assessment stages), then appended to whichever file currently holds that
 area's output — Clacton-etc/groups/ if it's already been promoted, else
-Clacton-etc/inputs/ (or inputs/wards/) if it's still staged.
+Clacton-etc/inputs/ (or inputs/wards/, inputs/custom/) if it's still staged.
 
 Three things happen, in order, and only if the group isn't already there:
   1. The row is appended to that groups_<Name>.csv. No backup file is
@@ -16,15 +17,18 @@ Three things happen, in order, and only if the group isn't already there:
   2. group_log.csv's row for this group is updated to accepted="Y",
      stage="recovered".
   3. The decision is recorded in group_overrides.csv, so a real future
-     reprocess of this area (uk.pipeline --force, or any uk.pipeline_ward
-     run) re-applies it instead of silently dropping the group again — see
-     uk.pipeline._load_overrides_by_area / _missing_override_rows.
+     reprocess of this area (uk.pipeline --force, uk.pipeline_ward, or
+     uk.pipeline_custom) re-applies it instead of silently dropping the
+     group again — see uk.pipeline._load_overrides_by_area /
+     _missing_override_rows.
 
 Usage:
     python -m uk.recover_group --url <group url> --area-type constituency \\
         --area-name "Holborn and St Pancras" --note "clearly local, About page confirms"
     python -m uk.recover_group --url <group url> --area-type ward \\
         --area-name "Garden Suburb (Barnet)"
+    python -m uk.recover_group --url <group url> --area-type custom \\
+        --area-name "North London"
 """
 
 import argparse
@@ -35,7 +39,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from uk import pipeline, pipeline_ward
+from uk import pipeline, pipeline_custom, pipeline_ward
 from uk.pipeline import GROUP_LOG_COLUMNS
 from uk.pipeline_ward import FINAL_COLUMNS, _parse_ward_area_name
 from uk.settings import CLACTON_GROUPS_DIR, CLACTON_INPUTS_DIR, GROUP_LOG_PATH, GROUP_OVERRIDES_PATH
@@ -68,6 +72,8 @@ def _target_file(area_type: str, area_name: str, ward_name: str | None) -> Path 
     promoted = CLACTON_GROUPS_DIR / f"groups_{filename_base}.csv"
     if area_type == "ward":
         staged = CLACTON_INPUTS_DIR / "wards" / f"groups_{filename_base}.csv"
+    elif area_type == "custom":
+        staged = CLACTON_INPUTS_DIR / "custom" / f"groups_{filename_base}.csv"
     else:
         staged = CLACTON_INPUTS_DIR / f"groups_{filename_base}.csv"
 
@@ -145,8 +151,14 @@ def recover(area_type: str, area_name: str, url: str, note: str = "") -> dict:
     elif area_type == "ward":
         ward_name, local_authority = _parse_ward_area_name(area_name)
         pool = pipeline_ward.reconstruct_ward_candidates(ward_name, local_authority)
+    elif area_type == "custom":
+        try:
+            pool = pipeline_custom.reconstruct_custom_candidates(area_name)
+        except RuntimeError as e:
+            raise RecoveryError(str(e)) from e
+        ward_name = None
     else:
-        raise RecoveryError(f"Unknown area_type {area_type!r} (must be 'constituency' or 'ward')")
+        raise RecoveryError(f"Unknown area_type {area_type!r} (must be 'constituency', 'ward', or 'custom')")
 
     match = pool[pool["url"] == url]
     if match.empty:
@@ -194,7 +206,7 @@ def recover(area_type: str, area_name: str, url: str, note: str = "") -> dict:
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--url", required=True, help="The group's Facebook URL, exactly as it appears in group_log.csv")
-    parser.add_argument("--area-type", required=True, choices=["constituency", "ward"])
+    parser.add_argument("--area-type", required=True, choices=["constituency", "ward", "custom"])
     parser.add_argument("--area-name", required=True, help="area_name exactly as it appears in group_log.csv (for a ward, includes the local authority in parens)")
     parser.add_argument("--note", default="", help="Optional note recorded in group_log.csv and group_overrides.csv")
     args = parser.parse_args()

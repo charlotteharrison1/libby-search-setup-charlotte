@@ -107,10 +107,10 @@ def api_recover_group():
     area_type = body.get("area_type")
     area_name = body.get("area_name")
     note = body.get("note", "")
-    if not url or area_type not in ("constituency", "ward") or not area_name:
+    if not url or area_type not in ("constituency", "ward", "custom") or not area_name:
         return jsonify({
             "ok": False,
-            "message": "group_url, area_type ('constituency' or 'ward'), and area_name are required",
+            "message": "group_url, area_type ('constituency', 'ward', or 'custom'), and area_name are required",
         }), 400
 
     cmd = [
@@ -140,10 +140,10 @@ def api_remove_group():
     area_type = body.get("area_type")
     area_name = body.get("area_name")
     note = body.get("note", "")
-    if not url or area_type not in ("constituency", "ward") or not area_name:
+    if not url or area_type not in ("constituency", "ward", "custom") or not area_name:
         return jsonify({
             "ok": False,
-            "message": "group_url, area_type ('constituency' or 'ward'), and area_name are required",
+            "message": "group_url, area_type ('constituency', 'ward', or 'custom'), and area_name are required",
         }), 400
 
     cmd = [
