@@ -5,18 +5,19 @@
 <title>Libby Control Centre</title>
 <style>
   :root {
-    color-scheme: dark;
-    --neon: #10dd8f;
-    --neon-dim: #1fbd85;
-    --neon-glow: rgba(16, 221, 143, 0.25);
-    --ink: #f1fbf5;
-    --muted: #a5c9b6;
-    --border: #1c3a2d;
-    --border-bright: #275842;
-    --card: #0c1a14;
-    --bg: #071410;
-    --bg2: #0a1a14;
-    --red: #ff7a86;
+    color-scheme: light;
+    --neon: #d9483b;
+    --neon-dim: #e0644f;
+    --neon-glow: rgba(217, 72, 59, 0.22);
+    --accent-rgb: 217,72,59;
+    --ink: #2a1a17;
+    --muted: #8a6a62;
+    --border: #f3d9d0;
+    --border-bright: #e9b9ab;
+    --card: #ffffff;
+    --bg: #fff5f1;
+    --bg2: #fffaf8;
+    --red: #b3122e;
     --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   }
@@ -27,8 +28,8 @@
     font-size: 15px;
     margin: 0; padding: 28px 32px 60px;
     background:
-      linear-gradient(rgba(16,221,143,.018) 1px, transparent 1px) 0 0 / 100% 24px,
-      radial-gradient(circle at 12% -10%, rgba(16,221,143,.06), transparent 45%),
+      linear-gradient(rgba(var(--accent-rgb),.018) 1px, transparent 1px) 0 0 / 100% 24px,
+      radial-gradient(circle at 12% -10%, rgba(var(--accent-rgb),.06), transparent 45%),
       var(--bg);
     color: var(--ink);
     line-height: 1.5;
@@ -37,14 +38,12 @@
   h1 {
     font-family: var(--font-mono);
     font-size: 19px; margin: 0; color: var(--neon); letter-spacing: .01em;
-  }
-  h1 .caret { display: inline-block; animation: blink 1.1s steps(1) infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
+  } }
   .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 26px; }
   section {
     background: var(--card); border: 1px solid var(--border); border-radius: 8px;
     padding: 18px 20px; margin-bottom: 18px;
-    box-shadow: 0 0 0 1px rgba(16,221,143,.02), 0 12px 30px rgba(0,0,0,.4);
+    box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.02), 0 12px 30px rgba(120,50,30,.08);
   }
   h2 {
     font-family: var(--font-mono);
@@ -63,9 +62,9 @@
   th:hover { color: var(--neon-dim); }
   th.sorted { color: var(--neon); }
   th .arrow { color: var(--neon); margin-left: 3px; }
-  tbody tr:hover { background: rgba(16, 221, 143, .06); }
+  tbody tr:hover { background: rgba(var(--accent-rgb), .06); }
   td.mark-yes { color: var(--neon); font-weight: 700; }
-  td.mark-no { color: #4c6d58; }
+  td.mark-no { color: #cdb5ac; }
   .table-wrap { max-height: 520px; overflow-y: auto; border-radius: 6px; border: 1px solid var(--border); }
   .filter-row { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; }
   .filter-row input {
@@ -76,7 +75,7 @@
   #actionButtons { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 14px; }
   .action-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .action-group .cat { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
-  .action-btn.active { background: rgba(16,221,143,.14); border-color: var(--neon); color: var(--neon); }
+  .action-btn.active { background: rgba(var(--accent-rgb),.14); border-color: var(--neon); color: var(--neon); }
   .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
   select {
     font-size: 13.5px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 5px;
@@ -95,36 +94,36 @@
   .suggestions {
     position: absolute; top: 100%; left: 0; margin-top: 4px; width: 340px; max-height: 340px;
     overflow-y: auto; background: var(--bg2); border: 1px solid var(--border-bright); border-radius: 6px;
-    box-shadow: 0 12px 30px rgba(0,0,0,.6), 0 0 20px rgba(0,230,154,.08); z-index: 10; display: none;
+    box-shadow: 0 12px 30px rgba(120,50,30,.15), 0 0 20px rgba(var(--accent-rgb),.08); z-index: 10; display: none;
   }
   .suggestions.open { display: block; }
   .suggestions div { padding: 8px 12px; font-size: 13.5px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
-  .suggestions div:hover, .suggestions div.active { background: rgba(0, 230, 154, .1); color: var(--neon); }
+  .suggestions div:hover, .suggestions div.active { background: rgba(var(--accent-rgb), .1); color: var(--neon); }
   .suggestions .type-tag { color: var(--muted); font-size: 11.5px; }
   .suggestions .none { color: var(--muted); font-style: italic; cursor: default; }
   button.run {
-    background: var(--neon); color: #04140d; border: none; border-radius: 6px;
+    background: var(--neon); color: #fff; border: none; border-radius: 6px;
     padding: 8px 22px; cursor: pointer; font-size: 13px; font-weight: 700;
     font-family: var(--font-ui); letter-spacing: .01em;
     box-shadow: 0 1px 2px rgba(0,0,0,.3);
   }
-  button.run:hover { background: #33f2b5; }
-  button.run:disabled { background: #2b4238; color: #6f9382; box-shadow: none; cursor: not-allowed; }
+  button.run:hover { background: #e8604f; }
+  button.run:disabled { background: #ecd9d2; color: #b79d95; box-shadow: none; cursor: not-allowed; }
   .btn-secondary {
     background: transparent; color: var(--neon-dim); border: 1px solid var(--border-bright);
     border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600;
     font-family: var(--font-ui);
   }
-  .btn-secondary:hover { border-color: var(--neon); color: var(--neon); background: rgba(16,221,143,.06); }
+  .btn-secondary:hover { border-color: var(--neon); color: var(--neon); background: rgba(var(--accent-rgb),.06); }
   .log-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .log-head h2 { margin: 0; }
   .btn-danger {
-    background: transparent; color: var(--red); border: 1px solid #5a2530;
+    background: transparent; color: var(--red); border: 1px solid #e8a9b3;
     border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 12.5px; font-weight: 700;
     font-family: var(--font-ui);
   }
   .btn-danger:hover:not(:disabled) { background: rgba(255,122,134,.1); border-color: var(--red); }
-  .btn-danger:disabled { color: #4a3a3d; border-color: var(--border); cursor: not-allowed; }
+  .btn-danger:disabled { color: #cdb5ac; border-color: var(--border); cursor: not-allowed; }
   .stdin-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .stdin-prompt { color: var(--neon-dim); font-family: var(--font-mono); font-weight: 700; }
   .stdin-row input {
@@ -133,11 +132,11 @@
   }
   .stdin-row input:focus { outline: none; border-color: var(--neon-dim); box-shadow: 0 0 0 3px var(--neon-glow); }
   .stdin-row input:disabled { color: var(--muted); cursor: not-allowed; }
-  .stdin-row .btn-secondary:disabled { color: #4a5a52; border-color: var(--border); cursor: not-allowed; }
+  .stdin-row .btn-secondary:disabled { color: #cdb5ac; border-color: var(--border); cursor: not-allowed; }
   label.chk { font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
   label.chk input { accent-color: var(--neon); width: 14px; height: 14px; }
   #log {
-    background: #04100b; color: var(--ink); font-family: var(--font-mono);
+    background: var(--bg2); color: var(--ink); font-family: var(--font-mono);
     font-size: 13px; line-height: 1.6; padding: 16px; border-radius: 8px; height: 340px; overflow-y: auto;
     white-space: pre-wrap; word-break: break-word; border: 1px solid var(--border);
   }
@@ -153,7 +152,7 @@
   .cmd-preview.err { color: var(--red); border-color: var(--red); }
   .badge {
     display: inline-block; font-size: 11.5px; padding: 3px 9px; border-radius: 3px;
-    background: rgba(0,230,154,.1); color: var(--neon); margin-left: 8px; font-weight: 600;
+    background: rgba(var(--accent-rgb),.1); color: var(--neon); margin-left: 8px; font-weight: 600;
     border: 1px solid var(--border-bright);
   }
   .tab-link {
@@ -162,18 +161,19 @@
     text-decoration: none; border: 1px solid var(--border-bright); border-radius: 7px;
     padding: 7px 16px; background: var(--card);
   }
-  .tab-link:hover { color: var(--neon); border-color: var(--neon); background: rgba(16,221,143,.06); }
+  .tab-link:hover { color: var(--neon); border-color: var(--neon); background: rgba(var(--accent-rgb),.06); }
   .tab-link .arrow { font-size: 11px; }
   .prompt-block textarea { width: 100%; font-family: var(--font-mono); font-size: 12.5px; background: var(--bg2); color: var(--ink); border: 1px solid var(--border); border-radius: 5px; padding: 8px 12px; resize: vertical; }
   .prompt-block pre { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 8px 12px; margin: 4px 0 10px; }
   .prompt-block label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
   .prompt-block code { color: var(--amber); }
 </style>
+<script src="/static/theme.js"></script>
 </head>
 <body>
 
 <header>
-  <h1>&gt; libby control centre<span class="caret">_</span></h1>
+  <h1>&gt; libby control centre</h1>
   <a class="tab-link" href="/group-log" target="_blank">Group log <span class="arrow">↗</span></a>
   <a class="tab-link" href="/analysis-centre" target="_blank">Analysis centre <span class="arrow">↗</span></a>
   <a class="tab-link" href="/third-sector" target="_blank">Third sector <span class="arrow">↗</span></a>

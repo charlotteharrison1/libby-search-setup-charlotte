@@ -5,19 +5,11 @@
 <title>Libby Group Log</title>
 <style>
   :root {
-    color-scheme: dark;
-    --neon: #10dd8f;
-    --neon-dim: #1fbd85;
-    --neon-glow: rgba(16, 221, 143, 0.25);
-    --ink: #f1fbf5;
-    --muted: #a5c9b6;
-    --border: #1c3a2d;
-    --border-bright: #275842;
-    --card: #0c1a14;
-    --bg: #071410;
-    --bg2: #0a1a14;
-    --red: #ff7a86;
-    --amber: #ffb454;
+    color-scheme: light;
+    --neon: #d9483b; --neon-dim: #e0644f; --neon-glow: rgba(217, 72, 59, 0.22);
+    --accent-rgb: 217,72,59; --ok: #1a8a55; --ok-rgb: 26,138,85;
+    --ink: #2a1a17; --muted: #8a6a62; --border: #f3d9d0; --border-bright: #e9b9ab;
+    --card: #ffffff; --bg: #fff5f1; --bg2: #fffaf8; --red: #b3122e; --amber: #b86e00;
     --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
   }
@@ -28,8 +20,8 @@
     font-size: 15px;
     margin: 0; padding: 20px 28px 24px;
     background:
-      linear-gradient(rgba(16,221,143,.018) 1px, transparent 1px) 0 0 / 100% 24px,
-      radial-gradient(circle at 12% -10%, rgba(16,221,143,.06), transparent 45%),
+      linear-gradient(rgba(var(--accent-rgb),.018) 1px, transparent 1px) 0 0 / 100% 24px,
+      radial-gradient(circle at 12% -10%, rgba(var(--accent-rgb),.06), transparent 45%),
       var(--bg);
     color: var(--ink);
     line-height: 1.5;
@@ -48,12 +40,12 @@
     text-decoration: none; border: 1px solid var(--border-bright); border-radius: 7px;
     padding: 7px 16px; background: var(--card);
   }
-  .tab-link:hover { color: var(--neon); border-color: var(--neon); background: rgba(16,221,143,.06); }
+  .tab-link:hover { color: var(--neon); border-color: var(--neon); background: rgba(var(--accent-rgb),.06); }
   .tab-link .arrow { font-size: 11px; }
   .sub { color: var(--muted); font-size: 13.5px; margin-bottom: 16px; }
   .badge {
     display: inline-block; font-size: 11.5px; padding: 3px 9px; border-radius: 3px;
-    background: rgba(0,230,154,.1); color: var(--neon); margin-left: 4px; font-weight: 600;
+    background: rgba(var(--accent-rgb),.1); color: var(--neon); margin-left: 4px; font-weight: 600;
     border: 1px solid var(--border-bright);
   }
   .filter-row { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -71,21 +63,21 @@
     border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600;
     font-family: var(--font-ui);
   }
-  .btn-secondary:hover { border-color: var(--neon); color: var(--neon); background: rgba(16,221,143,.06); }
+  .btn-secondary:hover { border-color: var(--neon); color: var(--neon); background: rgba(var(--accent-rgb),.06); }
   td.action-cell { white-space: nowrap; text-align: right; }
   .recover-btn {
     background: transparent; color: var(--amber); border: 1px solid var(--amber);
     border-radius: 5px; padding: 3px 10px; cursor: pointer; font-size: 11.5px; font-weight: 700;
     font-family: var(--font-ui);
   }
-  .recover-btn:hover:not(:disabled) { background: rgba(255,180,84,.12); }
+  .recover-btn:hover:not(:disabled) { background: rgba(184,110,0,.12); }
   .recover-btn:disabled { opacity: .5; cursor: not-allowed; }
   .remove-btn {
     background: transparent; color: var(--red); border: 1px solid var(--red);
     border-radius: 5px; padding: 3px 10px; cursor: pointer; font-size: 11.5px; font-weight: 700;
     font-family: var(--font-ui);
   }
-  .remove-btn:hover:not(:disabled) { background: rgba(255,122,134,.12); }
+  .remove-btn:hover:not(:disabled) { background: rgba(179,18,46,.1); }
   .remove-btn:disabled { opacity: .5; cursor: not-allowed; }
   .area-picker { position: relative; }
   .area-picker input { width: 260px; padding-right: 30px; }
@@ -96,11 +88,11 @@
   .suggestions {
     position: absolute; top: 100%; left: 0; margin-top: 4px; width: 340px; max-height: 340px;
     overflow-y: auto; background: var(--bg2); border: 1px solid var(--border-bright); border-radius: 6px;
-    box-shadow: 0 12px 30px rgba(0,0,0,.6), 0 0 20px rgba(0,230,154,.08); z-index: 10; display: none;
+    box-shadow: 0 12px 30px rgba(120,50,30,.15), 0 0 20px rgba(var(--accent-rgb),.08); z-index: 10; display: none;
   }
   .suggestions.open { display: block; }
   .suggestions div { padding: 8px 12px; font-size: 13.5px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
-  .suggestions div:hover, .suggestions div.active { background: rgba(0, 230, 154, .1); color: var(--neon); }
+  .suggestions div:hover, .suggestions div.active { background: rgba(var(--accent-rgb), .1); color: var(--neon); }
   .suggestions .type-tag { color: var(--muted); font-size: 11.5px; }
   .suggestions .none { color: var(--muted); font-style: italic; cursor: default; }
   .hint { color: var(--muted); font-size: 12.5px; }
@@ -123,16 +115,17 @@
   td.outcome-cell { font-weight: 700; }
   .url-link { color: var(--neon-dim); text-decoration: none; }
   .url-link:hover { color: var(--neon); text-decoration: underline; }
-  .outcome-accepted { color: var(--neon); }
+  .outcome-accepted { color: var(--ok); }
   .outcome-auto { color: var(--amber); }
   .outcome-ai { color: var(--red); }
-  tr.row-accepted td:first-child { border-left: 3px solid var(--neon); }
+  tr.row-accepted td:first-child { border-left: 3px solid var(--ok); }
   tr.row-auto td:first-child { border-left: 3px solid var(--amber); }
   tr.row-ai td:first-child { border-left: 3px solid var(--red); }
-  tr.row-accepted { background: rgba(16, 221, 143, .035); }
-  tr.row-auto { background: rgba(255, 180, 84, .035); }
-  tr.row-ai { background: rgba(255, 122, 134, .035); }
+  tr.row-accepted { background: rgba(var(--ok-rgb), .06); }
+  tr.row-auto { background: rgba(184,110,0,.06); }
+  tr.row-ai { background: rgba(179,18,46,.05); }
 </style>
+<script src="/static/theme.js"></script>
 </head>
 <body>
 

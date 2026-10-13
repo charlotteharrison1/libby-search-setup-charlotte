@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from control_centre import actions, run_queue, status
 from libby_core import assessment, descriptions, parse_groups, prompts
-from third_sector import config as ts_config, settings as ts_settings
+from third_sector import config as ts_config, generate_search as ts_generate_search, settings as ts_settings
 from uk.generate_search import slugify
 from uk.settings import GROUP_LOG_PATH
 
@@ -141,19 +141,37 @@ def api_third_sector_topics():
     return jsonify({"topics": out})
 
 
-@app.route("/api/third_sector/terms/<slug>")
+@app.route("/api/third_sector/terms/<slug>", methods=["GET", "PUT"])
 def api_third_sector_terms(slug):
-    """The search terms generate_search wrote for a topic, with scrape progress."""
-    path = ts_settings.SEARCH_TARGETS_DIR / f"{slugify(slug)}_search_targets.csv"
-    scraped = ts_settings.SCRAPED_DIR / f"{slugify(slug)}_search_targets.csv"
+    """GET: the search terms in the topic's search-targets file (the editable
+    source), plus per-term progress from the pulled scrape if there is one.
+    PUT {"terms": [...]}: rewrite that file. Only the LOCAL file changes —
+    re-push for libby to see it."""
+    slug = slugify(slug)
+    path = ts_settings.SEARCH_TARGETS_DIR / f"{slug}_search_targets.csv"
+    scraped_path = ts_settings.SCRAPED_DIR / f"{slug}_search_targets.csv"
+    if request.method == "PUT":
+        try:
+            ts_config.get_topic(slug)
+        except KeyError:
+            return jsonify({"ok": False, "message": "Unknown topic"}), 404
+        terms = [str(t) for t in (request.get_json(force=True) or {}).get("terms", [])]
+        n = ts_generate_search.save_terms(slug, terms)
+        msg = f"Saved {n} terms locally — push again for libby to use them."
+        if scraped_path.exists():
+            msg += " (A pulled scrape already exists; it still reflects the old terms.)"
+        return jsonify({"ok": True, "message": msg})
     if not path.exists():
         return jsonify({"terms": [], "scraped": False})
-    # Prefer the pulled copy (has `groups` filled in) over the pushed one.
-    df = pd.read_csv(scraped if scraped.exists() else path, dtype={"groups": str})
-    return jsonify({"scraped": scraped.exists(), "terms": [
-        {"term": r.search_string, "processed": bool(r.processed),
-         "n_groups": parse_groups.count_groups(r.groups) if scraped.exists() else None}
-        for r in df.itertuples()
+    df = pd.read_csv(path)
+    progress = {}
+    if scraped_path.exists():
+        sc = pd.read_csv(scraped_path, dtype={"groups": str})
+        progress = {r.search_string.lower(): (bool(r.processed), parse_groups.count_groups(r.groups)) for r in sc.itertuples()}
+    return jsonify({"scraped": scraped_path.exists(), "terms": [
+        {"term": t, "processed": progress.get(t.lower(), (False, None))[0],
+         "n_groups": progress.get(t.lower(), (False, None))[1]}
+        for t in df["search_string"]
     ]})
 
 
