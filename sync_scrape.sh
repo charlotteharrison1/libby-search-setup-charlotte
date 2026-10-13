@@ -7,6 +7,7 @@
 #   ./sync_scrape.sh push|pull --wards              (every ward file only)
 #   ./sync_scrape.sh push|pull --wards "Name"           (one name, forced to wards/)
 #   ./sync_scrape.sh push|pull --constituencies "Name"  (one name, forced to search_targets/)
+#   ./sync_scrape.sh push|pull --topics "slug"          (third-sector topic files: third_sector/data/...)
 #   ./sync_scrape.sh pull --all --force                 (re-pull everything, replacing local files)
 #   ./sync_scrape.sh pull --force "Name"                (replace one already-pulled area)
 #
@@ -32,8 +33,11 @@ LOCAL_TARGETS="$REPO_ROOT/uk/data/search_targets"
 LOCAL_TARGETS_WARDS="$LOCAL_TARGETS/wards"
 LOCAL_SCRAPED="$REPO_ROOT/uk/data/scraped"
 LOCAL_SCRAPED_WARDS="$LOCAL_SCRAPED/wards"
+# Third-sector topics (third_sector/generate_search.py) — never part of --all.
+LOCAL_TARGETS_TOPICS="$REPO_ROOT/third_sector/data/search_targets"
+LOCAL_SCRAPED_TOPICS="$REPO_ROOT/third_sector/data/scraped"
 
-mkdir -p "$LOCAL_TARGETS_WARDS" "$LOCAL_SCRAPED_WARDS"
+mkdir -p "$LOCAL_TARGETS_WARDS" "$LOCAL_SCRAPED_WARDS" "$LOCAL_TARGETS_TOPICS" "$LOCAL_SCRAPED_TOPICS"
 
 # --- helpers -----------------------------------------------------------------
 
@@ -44,6 +48,7 @@ usage() {
     echo "       $0 push|pull --wards                      (every ward file only)"
     echo "       $0 push|pull --wards <name> [<name> ...]          (force these names to wards/)"
     echo "       $0 push|pull --constituencies <name> [<name> ...] (force these names to search_targets/)"
+    echo "       $0 push|pull --topics <slug> [<slug> ...]         (third-sector topics)"
     exit 1
 }
 
@@ -93,9 +98,13 @@ case "${1:-}" in
     CONSTITUENCIES=($(list_slugs "$LOCAL_TARGETS") $(list_slugs "$LOCAL_TARGETS_WARDS"))
     BATCH_MODE=1
     ;;
-  --constituencies|--wards)
+  --constituencies|--wards|--topics)
     CATEGORY="${1#--}"
-    [[ "$CATEGORY" == "wards" ]] && CATEGORY_DIR="$LOCAL_TARGETS_WARDS" || CATEGORY_DIR="$LOCAL_TARGETS"
+    case "$CATEGORY" in
+      wards)  CATEGORY_DIR="$LOCAL_TARGETS_WARDS" ;;
+      topics) CATEGORY_DIR="$LOCAL_TARGETS_TOPICS" ;;
+      *)      CATEGORY_DIR="$LOCAL_TARGETS" ;;
+    esac
     shift
     if [[ $# -eq 0 ]]; then
         CONSTITUENCIES=($(list_slugs "$CATEGORY_DIR"))
@@ -129,7 +138,9 @@ for CONSTITUENCY in "${CONSTITUENCIES[@]}"; do
     WARD_FILE="$LOCAL_TARGETS_WARDS/${SLUG}_search_targets.csv"
     CONSTITUENCY_FILE="$LOCAL_TARGETS/${SLUG}_search_targets.csv"
 
-    if [[ "$CATEGORY" == "wards" ]]; then
+    if [[ "$CATEGORY" == "topics" ]]; then
+        RESOLVED="topics"
+    elif [[ "$CATEGORY" == "wards" ]]; then
         RESOLVED="wards"
     elif [[ "$CATEGORY" == "constituencies" ]]; then
         RESOLVED="constituencies"
@@ -145,7 +156,11 @@ for CONSTITUENCY in "${CONSTITUENCIES[@]}"; do
         RESOLVED="constituencies"
     fi
 
-    if [[ "$RESOLVED" == "wards" ]]; then
+    if [[ "$RESOLVED" == "topics" ]]; then
+        LOCAL_TARGET_FILE="$LOCAL_TARGETS_TOPICS/${SLUG}_search_targets.csv"
+        LOCAL_SCRAPED_FILE="$LOCAL_SCRAPED_TOPICS/${SLUG}_search_targets.csv"
+        REMOTE_DIR="$REMOTE_BASE/topics/$SLUG"
+    elif [[ "$RESOLVED" == "wards" ]]; then
         LOCAL_TARGET_FILE="$WARD_FILE"
         LOCAL_SCRAPED_FILE="$LOCAL_SCRAPED_WARDS/${SLUG}_search_targets.csv"
         REMOTE_DIR="$REMOTE_BASE/wards/$SLUG"

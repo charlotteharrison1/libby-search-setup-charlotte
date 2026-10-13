@@ -30,3 +30,6 @@ env/
 .coverage
 htmlcov/
 *.log
+
+third_sector/data/
+third_sector/output/

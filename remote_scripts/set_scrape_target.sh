@@ -12,7 +12,7 @@
 #
 # Constituencies live nested under constituencies/<slug>/; wards under
 # wards/<slug>/ — this checks constituencies/<slug>/ first, then
-# wards/<slug>/.
+# wards/<slug>/, then topics/<slug>/ (third-sector topics).
 #
 # Usage (run from /home/pub/libby_download, or anywhere — it locates
 # clacton.json next to this script):
@@ -43,6 +43,8 @@ if [[ -d "$HERE/constituencies/$SLUG" ]]; then
     REL_DIR="constituencies/$SLUG"
 elif [[ -d "$HERE/wards/$SLUG" ]]; then
     REL_DIR="wards/$SLUG"
+elif [[ -d "$HERE/topics/$SLUG" ]]; then
+    REL_DIR="topics/$SLUG"
 elif [[ "$FORCE" -eq 1 ]]; then
     # --force with no folder yet (not pushed under either category): default
     # to wards/, since ad-hoc one-off targets are the more common case for

@@ -40,7 +40,7 @@ print(parts[-2] if len(parts) >= 2 else '')
 
 CANDIDATE_SLUGS=()
 CANDIDATE_MTIMES=()
-for dir in "$HERE"/constituencies/*/ "$HERE"/wards/*/; do
+for dir in "$HERE"/constituencies/*/ "$HERE"/wards/*/ "$HERE"/topics/*/; do
     slug="$(basename "$dir")"
     master="${dir}${slug}_search_targets.csv"
     [[ -f "$master" ]] || continue                     # not a pushed constituency/ward folder

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from libby_core import ai
+from libby_core import ai, prompts
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +37,16 @@ DEFAULT_PROMPT_TEMPLATE = (
 def build_prompt(
     area_name: str,
     area_kind: str,
-    prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
+    prompt_template: str | None = None,
 ) -> str:
+    prompt_template = prompt_template or prompts.get("description", DEFAULT_PROMPT_TEMPLATE)
     return prompt_template.format(area_kind=area_kind, area_name=area_name)
 
 
 def generate_description(
     area_name: str,
     area_kind: str,
-    prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
+    prompt_template: str | None = None,
     model: str = DEFAULT_MODEL,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str | None:
@@ -72,7 +73,7 @@ def ensure_description(
     area_kind: str,
     id_col: str = "area_id",
     name_col: str = "area_name",
-    prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
+    prompt_template: str | None = None,
     model: str = DEFAULT_MODEL,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:

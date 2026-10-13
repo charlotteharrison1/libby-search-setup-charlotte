@@ -10,7 +10,7 @@ import logging
 
 import pandas as pd
 
-from libby_core import ai
+from libby_core import ai, prompts
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def assess_groups(
     area_kind: str,
     name_column: str = "name",
     response_column: str = "first_assessment",
-    prompt_template: str = DEFAULT_PROMPT_TEMPLATE,
+    prompt_template: str | None = None,
     model: str = DEFAULT_ASSESSMENT_MODEL,
     concurrency: int = 10,
     context_column: str | None = None,
@@ -65,6 +65,9 @@ def assess_groups(
     Returns the input DataFrame with an added ``response_column`` containing
     'Yes', 'Unsure', or 'No'.
     """
+
+    # None = use the control-centre override if one is saved, else the original.
+    prompt_template = prompt_template or prompts.get("assessment", DEFAULT_PROMPT_TEMPLATE)
 
     def get_prompt(row: pd.Series) -> str:
         group_name = row.get(name_column)

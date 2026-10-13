@@ -1,0 +1,13 @@
+{
+  "topics": [
+    {
+      "name": "UK environmental groups",
+      "description": "Facebook groups for people in the UK who care about the environment: climate action, nature and wildlife conservation, litter picking and clean-ups, rewilding, sustainability, anti-pollution and green campaigning. Local and national groups both count. Not environment-adjacent commerce (e.g. garden centres, second-hand selling) and not groups outside the UK."
+    }
+  ],
+  "prompts": {
+    "keyword_expansion": "I am searching Facebook for groups on this topic: {topic}.\nWhat counts: {topic_description}\n\nList 25 short Facebook group search terms (2-4 words each) that would surface relevant UK groups. Cover different angles: campaigning, wildlife, litter picking, sustainability, local action groups, etc. Output one term per line, no numbering, no commentary.",
+    "stage1_filter": "You are assessing whether a Facebook group belongs to this topic: {topic}.\nWhat counts: {topic_description}\nThe Facebook group name is: '{group_name}'. {about_context}Answer 'Yes' if the group clearly fits the topic, 'No' if it obviously does not (wrong subject, outside the UK, buying/selling, spam). When in doubt prefer 'Unsure' - these results are reviewed later. Only answer with the single word: 'Yes', 'Unsure', or 'No'.",
+    "stage2_with_posts": "You are making a final decision on whether a Facebook group belongs to this topic: {topic}.\nWhat counts: {topic_description}\nThe Facebook group name is: '{group_name}'. {about_context}A sample of its recent posts:\n{posts}\n\nAnswer 'Yes' if the posts show it is genuinely a UK group on this topic, otherwise 'No'. Only answer with the single word: 'Yes', 'Unsure', or 'No'."
+  }
+}
