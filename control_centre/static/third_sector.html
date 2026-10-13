@@ -1,0 +1,238 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Libby Third Sector</title>
+<style>
+  :root {
+    color-scheme: light;
+    --neon: #0a7a50; --neon-dim: #11875a; --neon-glow: rgba(10,122,80,.2);
+    --ink: #14231c; --muted: #5a6e64; --border: #d5e2da; --border-bright: #b5cdbf;
+    --card: #ffffff; --bg: #f3f7f4; --bg2: #f8fbf9; --red: #c0303f; --amber: #a86400;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: var(--font-ui); font-size: 15px; margin: 0; padding: 20px 28px 40px; background: var(--bg); color: var(--ink); line-height: 1.5; }
+  header { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; flex-wrap: wrap; }
+  h1 { font-family: var(--font-mono); font-size: 19px; margin: 0; color: var(--neon); }
+  h2 { font-family: var(--font-mono); font-size: 14px; color: var(--neon); margin: 0 0 10px; text-transform: uppercase; letter-spacing: .04em; }
+  .tab-link { color: var(--neon-dim); font-size: 13px; font-weight: 600; text-decoration: none; border: 1px solid var(--border-bright); border-radius: 7px; padding: 7px 16px; background: var(--card); }
+  .tab-link:hover { color: var(--neon); border-color: var(--neon); }
+  .sub, .hint { color: var(--muted); font-size: 13px; }
+  .sub { margin-bottom: 16px; }
+  section { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px; margin-bottom: 18px; }
+  select, input[type=text], textarea { font: inherit; font-size: 13.5px; color: var(--ink); background: var(--bg2); border: 1px solid var(--border); border-radius: 5px; padding: 8px 12px; }
+  textarea { width: 100%; font-family: var(--font-mono); font-size: 12.5px; resize: vertical; }
+  input[type=text] { width: 260px; }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: var(--neon-dim); box-shadow: 0 0 0 3px var(--neon-glow); }
+  button { background: transparent; color: var(--neon-dim); border: 1px solid var(--border-bright); border-radius: 6px; padding: 8px 14px; cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; }
+  button:hover:not(:disabled) { border-color: var(--neon); color: var(--neon); background: rgba(10,122,80,.07); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.danger { color: var(--red); border-color: var(--red); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .chip { font-size: 11.5px; padding: 3px 9px; border-radius: 3px; border: 1px solid var(--border-bright); color: var(--muted); }
+  .chip.on { color: var(--neon); background: rgba(10,122,80,.1); }
+  label.field { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+  label.field code, .hint code { color: var(--amber); }
+  #preview { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin: 6px 0; min-height: 18px; word-break: break-all; }
+  #log { font-family: var(--font-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; height: 260px; overflow: auto; white-space: pre-wrap; margin-top: 8px; }
+  #log .cmd { color: var(--neon-dim); } #log .bad { color: var(--red); }
+  .topic-block { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+  #saveMsg.err { color: var(--red); white-space: pre-wrap; } #saveMsg.ok { color: var(--neon); }
+  .table-wrap { max-height: 520px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--border); }
+  th { font-family: var(--font-mono); color: var(--muted); font-size: 11px; text-transform: uppercase; position: sticky; top: 0; background: var(--bg2); cursor: pointer; }
+  th.sorted { color: var(--neon); }
+  td a { color: var(--neon-dim); text-decoration: none; } td a:hover { text-decoration: underline; }
+  td.yes { color: var(--neon); font-weight: 700; } td.no { color: var(--red); font-weight: 700; }
+</style>
+</head>
+<body>
+<header>
+  <h1>&gt; third sector</h1>
+  <a class="tab-link" href="/" target="_blank">Control centre ↗</a>
+  <a class="tab-link" href="/group-log" target="_blank">Group log ↗</a>
+  <a class="tab-link" href="/analysis-centre" target="_blank">Analysis centre ↗</a>
+</header>
+<div class="sub">Find groups by interest (e.g. "UK environmental groups") instead of by place. Same libby scraper, topic-driven search terms.</div>
+
+<section>
+  <h2>Run</h2>
+  <div class="row">
+    <select id="topicSel"></select>
+    <span id="chips"></span>
+  </div>
+  <div class="row">
+    <button data-a="ts_generate">1 · Generate search terms</button>
+    <button data-a="ts_push">2 · Push</button>
+    <button data-a="ts_set_target">3 · Set scrape target</button>
+    <button data-a="view_scrape_target">View target</button>
+    <button data-a="run_remote_scrape">4 · Run remote scrape</button>
+    <button data-a="ts_pull">5 · Pull</button>
+    <button data-a="ts_collect">6 · Collect groups (no AI)</button>
+    <button id="killBtn" class="danger" disabled>Stop</button>
+  </div>
+  <div class="row">
+    <label class="hint"><input type="checkbox" id="force"> --force (regenerate / re-pull; overwrites an existing file)</label>
+    <input type="text" id="terms" placeholder="optional: 'a;b;c' search terms, skips the LLM" style="width:380px">
+  </div>
+  <div id="preview"></div>
+  <div class="row">
+    <input type="text" id="stdinInput" placeholder="send a line to the running command (e.g. Enter for script.py login prompt)" style="width:480px" disabled>
+    <button id="stdinBtn" disabled>Send</button>
+  </div>
+  <div id="log"></div>
+</section>
+
+<section>
+  <h2>Topics &amp; prompts</h2>
+  <div class="hint">Each topic can override any prompt (open its "Prompts for this topic"); stages it doesn't override use the defaults at the bottom.</div>
+  <div class="hint">Read fresh on every run — edits apply to the next command. Saving keeps the previous version as <code>prompts.json.bak</code>.</div>
+  <div id="topics"></div>
+  <button id="addTopic">+ Add topic</button>
+  <h2 style="margin-top:18px">Default prompts</h2>
+  <div class="hint">Used by every topic that hasn't overridden that stage — and as the starting text when you customise one.</div>
+  <div id="prompts"></div>
+  <div class="row" style="margin-top:14px">
+    <button id="saveBtn">Save</button><button id="reloadBtn">Discard changes</button>
+    <span id="saveMsg"></span>
+  </div>
+</section>
+
+<section>
+  <h2>Third-sector group log <span class="chip" id="logCount"></span></h2>
+  <div class="row">
+    <input type="text" id="logFilter" placeholder="Search group, topic or reason...">
+    <select id="logTopic"><option value="">All topics</option></select>
+    <button id="logRefresh">Refresh</button>
+  </div>
+  <div class="table-wrap"><table><thead><tr id="logHead"></tr></thead><tbody id="logBody"></tbody></table></div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const slugify = n => n.toLowerCase().replace(/ /g, "_").replace(/&/g, "and").replace(/[^a-z0-9_]/g, "");
+let CFG = null, ACTION = null;
+
+// ── run panel ───────────────────────────────────────────────────────────
+const PROMPT_HINTS = {
+  keyword_expansion: ["{topic}", "{topic_description}"],
+  stage1_filter: ["{topic}", "{topic_description}", "{group_name}", "{about_context}"],
+  stage2_with_posts: ["{topic}", "{topic_description}", "{group_name}", "{about_context}", "{posts}"],
+};
+const PROMPT_TITLES = {
+  keyword_expansion: "Search-term generation (used by step 1)",
+  stage1_filter: "Stage 1 — name / About filter (not wired up yet)",
+  stage2_with_posts: "Stage 2 — with sampled posts (not wired up yet)",
+};
+
+function params() { return {topic: $("topicSel").value, force: $("force").checked, terms: $("terms").value.trim()}; }
+async function preview(action) {
+  ACTION = action;
+  $("preview").textContent = "";
+  const res = await fetch("/api/preview", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action_id: action, params: params()})});
+  const d = await res.json();
+  $("preview").textContent = d.command ? "$ " + d.command : (d.error || "");
+}
+function log(text, cls) { const s = document.createElement("span"); if (cls) s.className = cls; s.textContent = text; $("log").appendChild(s); $("log").scrollTop = $("log").scrollHeight; }
+function setRunning(on) {
+  document.querySelectorAll("button[data-a]").forEach(b => b.disabled = on);
+  $("killBtn").disabled = !on; $("stdinInput").disabled = !on; $("stdinBtn").disabled = !on;
+}
+async function run(action) {
+  setRunning(true); $("log").textContent = "";
+  try {
+    const res = await fetch("/api/run", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action_id: action, params: params()})});
+    if (!res.ok) { log("Error: " + (await res.json()).error + "\n", "bad"); return; }
+    const reader = res.body.getReader(), dec = new TextDecoder(); let first = true;
+    for (;;) { const {done, value} = await reader.read(); if (done) break; log(dec.decode(value, {stream: true}), first ? "cmd" : ""); first = false; }
+  } catch (e) { log("Request failed: " + e + "\n", "bad"); }
+  finally { setRunning(false); loadTopicStatus(); loadLog(); }
+}
+document.querySelectorAll("button[data-a]").forEach(b => {
+  b.addEventListener("mouseenter", () => preview(b.dataset.a));
+  b.addEventListener("click", () => run(b.dataset.a));
+});
+$("killBtn").onclick = () => fetch("/api/kill", {method: "POST"});
+$("stdinBtn").onclick = async () => {
+  const text = $("stdinInput").value; $("stdinInput").value = ""; log("\n> " + text + "\n", "cmd");
+  await fetch("/api/stdin", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({text})});
+};
+async function loadTopicStatus() {
+  const d = await (await fetch("/api/third_sector/topics")).json();
+  const sel = $("topicSel"), keep = sel.value;
+  sel.innerHTML = d.topics.map(t => `<option value="${esc(t.slug)}">${esc(t.name)}</option>`).join("");
+  if (keep) sel.value = keep;
+  const t = d.topics.find(t => t.slug === sel.value);
+  $("chips").innerHTML = t ? [["generated", t.generated], ["pulled", t.pulled], ["collected", t.collected]]
+    .map(([n, on]) => `<span class="chip ${on ? "on" : ""}">${on ? "✓" : "·"} ${n}</span>`).join(" ") : "";
+}
+$("topicSel").onchange = loadTopicStatus;
+
+// ── prompt editor ───────────────────────────────────────────────────────
+function promptBox(k, text, attrs, custom) {
+  return `<label class="field">${PROMPT_TITLES[k]} — placeholders: ${PROMPT_HINTS[k].map(p => `<code>${p}</code>`).join(" ")}
+    ${custom === undefined ? "" : `<span class="chip ${custom ? "on" : ""}">${custom ? "custom" : "default"}</span>`}</label>
+    <textarea rows="8" ${attrs}>${esc(text)}</textarea>`;
+}
+function renderConfig() {
+  $("topics").innerHTML = CFG.topics.map((t, i) => {
+    t.prompts = t.prompts || {};
+    return `<div class="topic-block">
+      <div class="row"><input type="text" data-t="${i}" data-k="name" value="${esc(t.name)}" placeholder="Topic name">
+        <button class="danger" data-del="${i}">Remove</button></div>
+      <textarea rows="3" data-t="${i}" data-k="description" placeholder="What counts / what doesn't">${esc(t.description)}</textarea>
+      <details><summary class="hint">Prompts for this topic (${Object.keys(t.prompts).length} custom)</summary>
+        ${Object.keys(PROMPT_TITLES).map(k => promptBox(k, t.prompts[k] ?? CFG.prompts[k], `data-tp="${i}" data-k="${k}"`, k in t.prompts) +
+          (k in t.prompts ? `<button data-reset="${i}|${k}">Reset to default</button>` : "")).join("")}
+      </details></div>`;
+  }).join("");
+  $("prompts").innerHTML = Object.keys(PROMPT_TITLES).map(k => promptBox(k, CFG.prompts[k], `data-p="${k}"`)).join("");
+  document.querySelectorAll("[data-t]").forEach(el => el.oninput = () => CFG.topics[el.dataset.t][el.dataset.k] = el.value);
+  document.querySelectorAll("[data-tp]").forEach(el => el.oninput = () => CFG.topics[el.dataset.tp].prompts[el.dataset.k] = el.value);
+  document.querySelectorAll("[data-p]").forEach(el => el.oninput = () => CFG.prompts[el.dataset.p] = el.value);
+  document.querySelectorAll("[data-del]").forEach(el => el.onclick = () => { CFG.topics.splice(el.dataset.del, 1); renderConfig(); });
+  document.querySelectorAll("[data-reset]").forEach(el => el.onclick = () => { const [i, k] = el.dataset.reset.split("|"); delete CFG.topics[i].prompts[k]; renderConfig(); });
+}
+async function loadConfig() { CFG = await (await fetch("/api/third_sector/config")).json(); renderConfig(); $("saveMsg").textContent = ""; }
+$("addTopic").onclick = () => { CFG.topics.push({name: "", description: ""}); renderConfig(); };
+$("reloadBtn").onclick = loadConfig;
+$("saveBtn").onclick = async () => {
+  CFG.topics.forEach(t => Object.keys(t.prompts || {}).forEach(k => { if (t.prompts[k] === CFG.prompts[k]) delete t.prompts[k]; }));
+  const res = await fetch("/api/third_sector/config", {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(CFG)});
+  const d = await res.json(), m = $("saveMsg");
+  m.className = d.ok ? "ok" : "err"; m.textContent = d.ok ? "Saved" : d.errors.join("\n");
+  if (d.ok) { loadTopicStatus(); renderConfig(); }
+};
+
+// ── group log ───────────────────────────────────────────────────────────
+const COLS = [["group","Group"],["area_name","Topic"],["accepted","Accepted"],["stage","Stage"],["reason","Reason"],["members","Members"],["posts_a_month","Posts/mo"]];
+let ROWS = [], SORT = {k: "members", dir: -1};
+async function loadLog() {
+  ROWS = (await (await fetch("/api/third_sector/group_log")).json()).rows;
+  const topics = [...new Set(ROWS.map(r => r.area_name))].sort(), cur = $("logTopic").value;
+  $("logTopic").innerHTML = '<option value="">All topics</option>' + topics.map(t => `<option>${esc(t)}</option>`).join("");
+  $("logTopic").value = cur; renderLog();
+}
+function renderLog() {
+  const q = $("logFilter").value.toLowerCase(), tp = $("logTopic").value;
+  let rows = ROWS.filter(r => (!tp || r.area_name === tp) && (!q || (r.group + r.area_name + r.reason).toLowerCase().includes(q)));
+  const num = SORT.k === "members" || SORT.k === "posts_a_month";
+  rows.sort((a, b) => (num ? (Number(a[SORT.k]) || -1) - (Number(b[SORT.k]) || -1) : String(a[SORT.k]).localeCompare(b[SORT.k])) * SORT.dir);
+  $("logCount").textContent = `${rows.length} / ${ROWS.length}`;
+  $("logHead").innerHTML = COLS.map(([k, n]) => `<th data-k="${k}" class="${SORT.k === k ? "sorted" : ""}">${n}${SORT.k === k ? (SORT.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("");
+  $("logHead").querySelectorAll("th").forEach(th => th.onclick = () => { SORT = {k: th.dataset.k, dir: SORT.k === th.dataset.k ? -SORT.dir : 1}; renderLog(); });
+  $("logBody").innerHTML = rows.slice(0, 1000).map(r => `<tr>
+    <td><a href="${esc(r.group_url)}" target="_blank">${esc(r.group)}</a></td><td>${esc(r.area_name)}</td>
+    <td class="${r.accepted === "Y" ? "yes" : r.accepted === "N" ? "no" : ""}">${esc(r.accepted || "—")}</td>
+    <td>${esc(r.stage)}</td><td>${esc(r.reason)}</td><td>${esc(r.members)}</td><td>${esc(r.posts_a_month)}</td></tr>`).join("");
+}
+$("logFilter").oninput = renderLog; $("logTopic").onchange = renderLog; $("logRefresh").onclick = loadLog;
+
+loadTopicStatus(); loadConfig(); loadLog();
+</script>
+</body>
+</html>

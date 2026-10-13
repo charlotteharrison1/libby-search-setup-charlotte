@@ -11,6 +11,7 @@ applies to, since uk.pipeline and uk.pipeline_ward take different
 arguments (a display name vs a scraped file path).
 """
 
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -250,7 +251,60 @@ ACTIONS = {
 }
 
 
+# ── Third sector (topic-based) ────────────────────────────────────────────
+# Kept in a separate registry so they don't show up in the main page's area
+# action list; the third-sector page lists them itself. They take
+# params["topic"] (a slug from third_sector/prompts.json) instead of an area
+# row. The remote actions that don't depend on a row (run_remote_scrape,
+# view_scrape_target) are reused straight from ACTIONS.
+
+def _topic(params):
+    slug = params.get("topic") or ""
+    if not re.fullmatch(r"[a-z0-9_]+", slug):
+        raise UnknownAction("Pick a topic first")
+    return slug
+
+
+def _ts_generate(row, params):
+    cmd = ["python3", "-m", "third_sector.generate_search", "--topic", _topic(params)]
+    if params.get("terms"):
+        cmd += ["--terms", params["terms"]]
+    if params.get("force"):
+        cmd.append("--force")
+    return cmd
+
+
+def _ts_push(row, params):
+    return [str(REPO_ROOT / "sync_scrape.sh"), "push", "--topics", _topic(params)]
+
+
+def _ts_pull(row, params):
+    cmd = [str(REPO_ROOT / "sync_scrape.sh"), "pull"]
+    if params.get("force"):
+        cmd.append("--force")
+    return cmd + ["--topics", _topic(params)]
+
+
+def _ts_set_target(row, params):
+    return _ssh(f"cd {REMOTE_BASE} && ./set_scrape_target.sh {_topic(params)}")
+
+
+def _ts_collect(row, params):
+    return ["python3", "-m", "third_sector.pipeline", "--topic", _topic(params)]
+
+
+TS_ACTIONS = {
+    "ts_generate":   ("Generate search terms", "Prep",    False, _ts_generate),
+    "ts_push":       ("Push to libby",         "Push",    False, _ts_push),
+    "ts_set_target": ("Set scrape target",     "Remote",  False, _ts_set_target),
+    "ts_pull":       ("Pull scraped groups",   "Pull",    False, _ts_pull),
+    "ts_collect":    ("Collect groups (no AI)", "Process", False, _ts_collect),
+}
+
+
 def build_command(action_id: str, row: dict | None, params: dict) -> list[str]:
+    if action_id in TS_ACTIONS:
+        return TS_ACTIONS[action_id][3](row, params)
     if action_id not in ACTIONS:
         raise UnknownAction(f"Unknown action: {action_id}")
     _, _, needs_area, builder = ACTIONS[action_id]

@@ -29,6 +29,9 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from control_centre import actions, run_queue, status
+from libby_core import assessment, descriptions, prompts
+from third_sector import config as ts_config, settings as ts_settings
+from uk.generate_search import slugify
 from uk.settings import GROUP_LOG_PATH
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -66,6 +69,84 @@ def group_log_page():
 @app.route("/analysis-centre")
 def analysis_centre_page():
     return send_from_directory(app.static_folder, "analysis_centre.html")
+
+
+# Shared pipeline prompts editable from the main page. The "original" is the
+# DEFAULT_PROMPT_TEMPLATE constant in code (never edited); saved edits live in
+# libby_core/prompt_overrides.json — see libby_core/prompts.py.
+_PROMPTS = {
+    "assessment": ("Group relevance assessment (Yes / Unsure / No)", assessment.DEFAULT_PROMPT_TEMPLATE,
+                   {"group_name", "area_kind", "area_description"}, {"group_name", "area_kind", "area_description", "about_context"}),
+    "description": ("Area description (cached once per area)", descriptions.DEFAULT_PROMPT_TEMPLATE,
+                    {"area_kind", "area_name"}, {"area_kind", "area_name"}),
+}
+
+
+@app.route("/api/prompts")
+def api_prompts():
+    return jsonify({"prompts": [
+        {"id": pid, "label": label, "original": default, "current": prompts.get(pid, default),
+         "placeholders": sorted(allowed), "required": sorted(required)}
+        for pid, (label, default, required, allowed) in _PROMPTS.items()
+    ]})
+
+
+@app.route("/api/prompts/<pid>", methods=["PUT"])
+def api_prompt_save(pid):
+    """Body {"text": "..."} saves an override; {"text": null} reverts to the original."""
+    if pid not in _PROMPTS:
+        return jsonify({"ok": False, "errors": ["unknown prompt"]}), 404
+    text = (request.get_json(force=True) or {}).get("text")
+    _, default, required, allowed = _PROMPTS[pid]
+    if text and text != default:
+        errors = prompts.check_placeholders(pid, text, required, allowed)
+        if errors:
+            return jsonify({"ok": False, "errors": errors}), 400
+    prompts.set_override(pid, None if not text or text == default else text)
+    return jsonify({"ok": True})
+
+
+@app.route("/third-sector")
+def third_sector_page():
+    return send_from_directory(app.static_folder, "third_sector.html")
+
+
+@app.route("/api/third_sector/config", methods=["GET", "PUT"])
+def api_third_sector_config():
+    """Topics + editable prompts (third_sector/prompts.json). PUT validates
+    placeholders before saving; the previous file is kept as prompts.json.bak."""
+    if request.method == "GET":
+        return jsonify(ts_config.load())
+    cfg = request.get_json(force=True) or {}
+    errors = ts_config.validate(cfg)
+    if errors:
+        return jsonify({"ok": False, "errors": errors}), 400
+    ts_config.save(cfg)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/third_sector/topics")
+def api_third_sector_topics():
+    """Per-topic progress, read straight off the files each step writes."""
+    out = []
+    for t in ts_config.load()["topics"]:
+        slug = slugify(t["name"])
+        targets = ts_settings.SEARCH_TARGETS_DIR / f"{slug}_search_targets.csv"
+        scraped = ts_settings.SCRAPED_DIR / f"{slug}_search_targets.csv"
+        raw = ts_settings.OUTPUT_DIR / f"raw_{slug}.csv"
+        out.append({
+            "slug": slug, "name": t["name"],
+            "generated": targets.exists(), "pulled": scraped.exists(), "collected": raw.exists(),
+        })
+    return jsonify({"topics": out})
+
+
+@app.route("/api/third_sector/group_log")
+def api_third_sector_group_log():
+    if not ts_settings.GROUP_LOG_PATH.exists():
+        return jsonify({"rows": []})
+    df = pd.read_csv(ts_settings.GROUP_LOG_PATH, dtype=str, encoding="utf-8", encoding_errors="surrogatepass").fillna("")
+    return jsonify({"rows": df.to_dict(orient="records")})
 
 
 @app.route("/api/status")
@@ -198,7 +279,7 @@ def _resolve_command(body: dict) -> tuple[list[str] | None, tuple[dict, int] | N
     slug = body.get("slug")
     params = body.get("params", {})
 
-    if action_id not in actions.ACTIONS:
+    if action_id not in actions.ACTIONS and action_id not in actions.TS_ACTIONS:
         return None, ({"error": f"Unknown action: {action_id}"}, 400)
 
     row = None

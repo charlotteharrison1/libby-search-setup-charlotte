@@ -160,6 +160,10 @@
   }
   .tab-link:hover { color: var(--neon); border-color: var(--neon); background: rgba(16,221,143,.06); }
   .tab-link .arrow { font-size: 11px; }
+  .prompt-block textarea { width: 100%; font-family: var(--font-mono); font-size: 12.5px; background: var(--bg2); color: var(--ink); border: 1px solid var(--border); border-radius: 5px; padding: 8px 12px; resize: vertical; }
+  .prompt-block pre { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 8px 12px; margin: 4px 0 10px; }
+  .prompt-block label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+  .prompt-block code { color: var(--amber); }
 </style>
 </head>
 <body>
@@ -168,6 +172,7 @@
   <h1>&gt; libby control centre<span class="caret">_</span></h1>
   <a class="tab-link" href="/group-log" target="_blank">Group log <span class="arrow">↗</span></a>
   <a class="tab-link" href="/analysis-centre" target="_blank">Analysis centre <span class="arrow">↗</span></a>
+  <a class="tab-link" href="/third-sector" target="_blank">Third sector <span class="arrow">↗</span></a>
 </header>
 <div class="sub">Every action below runs a real local command — the exact command is always shown in the log before it executes.</div>
 
@@ -223,6 +228,14 @@
       <tbody id="queueBody"></tbody>
     </table>
   </div>
+</section>
+
+<section>
+  <details>
+    <summary><h2 style="display:inline">Prompts <span class="hint">(shared by the constituency and ward pipelines)</span></h2></summary>
+    <div class="hint">Edits apply to the next run. The original is shown below each editor; Revert restores it.</div>
+    <div id="promptEditors" class="prompt-block"></div>
+  </details>
 </section>
 
 <section>
@@ -906,6 +919,29 @@ document.getElementById("pick5Btn").addEventListener("click", pick5);
 document.getElementById("filterBox").addEventListener("input", e => renderStatus(e.target.value));
 document.getElementById("showAllToggle").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
 document.getElementById("typeFilter").addEventListener("change", () => renderStatus(document.getElementById("filterBox").value));
+
+// ── prompt editor ──
+const escHtml = t => String(t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function loadPrompts() {
+  const d = await (await fetch("/api/prompts")).json();
+  document.getElementById("promptEditors").innerHTML = d.prompts.map(p => `
+    <label>${escHtml(p.label)} — placeholders: ${p.placeholders.map(x => `<code>{${x}}</code>`).join(" ")}
+      (required: ${p.required.map(x => `<code>{${x}}</code>`).join(" ")})</label>
+    <textarea rows="10" id="prompt_${p.id}">${escHtml(p.current)}</textarea>
+    <div><button class="btn-secondary" data-save="${p.id}">Save</button>
+      <button class="btn-secondary" data-revert="${p.id}">Revert to original</button>
+      <span class="hint" id="promptMsg_${p.id}"></span></div>
+    <label>Original (read-only)</label><pre>${escHtml(p.original)}</pre>`).join("");
+  document.querySelectorAll("[data-save],[data-revert]").forEach(b => b.onclick = async () => {
+    const id = b.dataset.save || b.dataset.revert, msg = document.getElementById("promptMsg_" + id);
+    const text = b.dataset.save ? document.getElementById("prompt_" + id).value : null;
+    const res = await fetch("/api/prompts/" + id, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({text})});
+    const r = await res.json();
+    if (!r.ok) { msg.textContent = r.errors.join("; "); return; }
+    if (b.dataset.revert) loadPrompts(); else msg.textContent = "Saved";
+  });
+}
+loadPrompts();
 initAreaPicker();
 loadStatus();
 loadQueue();
