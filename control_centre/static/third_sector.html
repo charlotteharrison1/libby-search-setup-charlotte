@@ -38,6 +38,8 @@
   #preview { font-family: var(--font-mono); font-size: 12px; color: var(--muted); margin: 6px 0; min-height: 18px; word-break: break-all; }
   #log { font-family: var(--font-mono); font-size: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; height: 260px; overflow: auto; white-space: pre-wrap; margin-top: 8px; }
   #log .cmd { color: var(--neon-dim); } #log .bad { color: var(--red); }
+  .term { font-size: 12px; padding: 2px 9px; border-radius: 12px; border: 1px solid var(--border-bright); background: var(--bg2); }
+  .term.done { color: var(--neon); } .term small { color: var(--muted); margin-left: 4px; }
   .topic-block { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
   #saveMsg.err { color: var(--red); white-space: pre-wrap; } #saveMsg.ok { color: var(--neon); }
   .table-wrap { max-height: 520px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
@@ -78,6 +80,8 @@
     <label class="hint"><input type="checkbox" id="force"> --force (regenerate / re-pull; overwrites an existing file)</label>
     <input type="text" id="terms" placeholder="optional: 'a;b;c' search terms, skips the LLM" style="width:380px">
   </div>
+  <div class="hint" id="termsHead"></div>
+  <div id="terms-list" class="row" style="gap:6px"></div>
   <div id="preview"></div>
   <div class="row">
     <input type="text" id="stdinInput" placeholder="send a line to the running command (e.g. Enter for script.py login prompt)" style="width:480px" disabled>
@@ -150,7 +154,7 @@ async function run(action) {
     const reader = res.body.getReader(), dec = new TextDecoder(); let first = true;
     for (;;) { const {done, value} = await reader.read(); if (done) break; log(dec.decode(value, {stream: true}), first ? "cmd" : ""); first = false; }
   } catch (e) { log("Request failed: " + e + "\n", "bad"); }
-  finally { setRunning(false); loadTopicStatus(); loadLog(); }
+  finally { setRunning(false); loadTopicStatus(); loadTerms(); loadLog(); }
 }
 document.querySelectorAll("button[data-a]").forEach(b => {
   b.addEventListener("mouseenter", () => preview(b.dataset.a));
@@ -170,7 +174,16 @@ async function loadTopicStatus() {
   $("chips").innerHTML = t ? [["generated", t.generated], ["pulled", t.pulled], ["collected", t.collected]]
     .map(([n, on]) => `<span class="chip ${on ? "on" : ""}">${on ? "✓" : "·"} ${n}</span>`).join(" ") : "";
 }
-$("topicSel").onchange = loadTopicStatus;
+async function loadTerms() {
+  const slug = $("topicSel").value; if (!slug) return;
+  const d = await (await fetch("/api/third_sector/terms/" + slug)).json();
+  $("termsHead").textContent = d.terms.length
+    ? `Search terms (${d.terms.length})${d.scraped ? " — from pulled scrape, with groups found per term" : " — generated, not scraped yet"}`
+    : "No search terms yet — run step 1.";
+  $("terms-list").innerHTML = d.terms.map(t =>
+    `<span class="term ${t.processed ? "done" : ""}">${esc(t.term)}${t.n_groups == null ? "" : `<small>${t.n_groups}</small>`}</span>`).join("");
+}
+$("topicSel").onchange = () => { loadTopicStatus(); loadTerms(); };
 
 // ── prompt editor ───────────────────────────────────────────────────────
 function promptBox(k, text, attrs, custom) {
@@ -232,7 +245,7 @@ function renderLog() {
 }
 $("logFilter").oninput = renderLog; $("logTopic").onchange = renderLog; $("logRefresh").onclick = loadLog;
 
-loadTopicStatus(); loadConfig(); loadLog();
+loadTopicStatus().then(loadTerms); loadConfig(); loadLog();
 </script>
 </body>
 </html>

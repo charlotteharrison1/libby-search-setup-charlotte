@@ -73,6 +73,10 @@
     border-radius: 5px; background: var(--bg2); color: var(--ink); font-family: inherit;
   }
   .filter-row input:focus { outline: none; border-color: var(--neon-dim); box-shadow: 0 0 0 3px var(--neon-glow); }
+  #actionButtons { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 14px; }
+  .action-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .action-group .cat { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-right: 2px; }
+  .action-btn.active { background: rgba(16,221,143,.14); border-color: var(--neon); color: var(--neon); }
   .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
   select {
     font-size: 13.5px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 5px;
@@ -178,10 +182,9 @@
 
 <section>
   <h2>Run an action</h2>
+  <div id="actionButtons"></div>
   <div class="controls">
-    <div>
-      <select id="actionSelect"></select>
-    </div>
+    <select id="actionSelect" style="display:none"></select>
     <div class="area-picker" id="areaPicker">
       <input id="areaInput" placeholder="Click to browse, or type to search..." autocomplete="off">
       <div class="suggestions" id="areaSuggestions"></div>
@@ -478,6 +481,20 @@ function renderActionSelect() {
     items.map(a => `<option value="${a.id}">${a.label}</option>`).join("") +
     `</optgroup>`
   ).join("");
+  document.getElementById("actionButtons").innerHTML = Object.entries(byCategory).map(([cat, items]) =>
+    `<div class="action-group"><span class="cat">${cat}</span>` +
+    items.map(a => `<button type="button" class="btn-secondary action-btn" data-action="${a.id}">${a.label}</button>`).join("") +
+    `</div>`
+  ).join("");
+  document.querySelectorAll(".action-btn").forEach(b => b.addEventListener("click", () => {
+    sel.value = b.dataset.action;
+    sel.dispatchEvent(new Event("change"));
+  }));
+}
+
+function syncActionButtons() {
+  const cur = document.getElementById("actionSelect").value;
+  document.querySelectorAll(".action-btn").forEach(b => b.classList.toggle("active", b.dataset.action === cur));
 }
 
 function currentAction() {
@@ -538,6 +555,7 @@ function buildParams() {
 let PREVIEW_TOKEN = 0;
 
 async function updatePreview() {
+  syncActionButtons();
   const box = document.getElementById("cmdPreview");
   const action = currentAction();
   if (!action) { box.textContent = "$ …"; box.className = "cmd-preview"; return; }

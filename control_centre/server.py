@@ -29,7 +29,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from control_centre import actions, run_queue, status
-from libby_core import assessment, descriptions, prompts
+from libby_core import assessment, descriptions, parse_groups, prompts
 from third_sector import config as ts_config, settings as ts_settings
 from uk.generate_search import slugify
 from uk.settings import GROUP_LOG_PATH
@@ -139,6 +139,22 @@ def api_third_sector_topics():
             "generated": targets.exists(), "pulled": scraped.exists(), "collected": raw.exists(),
         })
     return jsonify({"topics": out})
+
+
+@app.route("/api/third_sector/terms/<slug>")
+def api_third_sector_terms(slug):
+    """The search terms generate_search wrote for a topic, with scrape progress."""
+    path = ts_settings.SEARCH_TARGETS_DIR / f"{slugify(slug)}_search_targets.csv"
+    scraped = ts_settings.SCRAPED_DIR / f"{slugify(slug)}_search_targets.csv"
+    if not path.exists():
+        return jsonify({"terms": [], "scraped": False})
+    # Prefer the pulled copy (has `groups` filled in) over the pushed one.
+    df = pd.read_csv(scraped if scraped.exists() else path, dtype={"groups": str})
+    return jsonify({"scraped": scraped.exists(), "terms": [
+        {"term": r.search_string, "processed": bool(r.processed),
+         "n_groups": parse_groups.count_groups(r.groups) if scraped.exists() else None}
+        for r in df.itertuples()
+    ]})
 
 
 @app.route("/api/third_sector/group_log")
