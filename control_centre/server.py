@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from control_centre import actions, run_queue, status
 from libby_core import assessment, descriptions, parse_groups, prompts
-from third_sector import config as ts_config, generate_search as ts_generate_search, settings as ts_settings
+from third_sector import config as ts_config, generate_search as ts_generate_search, generations as ts_generations, settings as ts_settings
 from uk.generate_search import slugify
 from uk.settings import GROUP_LOG_PATH
 
@@ -173,6 +173,25 @@ def api_third_sector_terms(slug):
          "n_groups": progress.get(t.lower(), (False, None))[1]}
         for t in df["search_string"]
     ]})
+
+
+@app.route("/api/third_sector/generations/<slug>")
+def api_third_sector_generations(slug):
+    """History (newest last, prompts omitted for size) + per-prompt noise baselines."""
+    entries = ts_generations.load(slugify(slug))
+    return jsonify({
+        "generations": [{k: e[k] for k in ("id", "stage", "source", "model", "prompt_hash")} | {"n": len(e["outputs"])} for e in entries],
+        "baselines": ts_generations.baselines(entries),
+    })
+
+
+@app.route("/api/third_sector/generations/<slug>/compare")
+def api_third_sector_compare(slug):
+    byid = {e["id"]: e for e in ts_generations.load(slugify(slug))}
+    a, b = byid.get(request.args.get("a")), byid.get(request.args.get("b"))
+    if not a or not b:
+        return jsonify({"error": "Unknown generation id"}), 400
+    return jsonify(ts_generations.compare(a, b))
 
 
 @app.route("/api/third_sector/group_log")

@@ -40,6 +40,9 @@
   #log .cmd { color: var(--neon-dim); } #log .bad { color: var(--red); }
   #terms-list { margin: 6px 0 0; padding-left: 22px; font-size: 13px; columns: 2; }
   #terms-list li.done { color: var(--neon); } #terms-list small { color: var(--muted); margin-left: 6px; }
+  .diff-add { color: var(--neon); } .diff-del { color: var(--red); }
+  #cmpOut pre { font-family: var(--font-mono); font-size: 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; white-space: pre-wrap; }
+  #cmpOut ul { columns: 2; margin: 4px 0; } #cmpOut h3 { font-size: 13px; margin: 12px 0 2px; }
   .topic-block { border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
   #saveMsg.err { color: var(--red); white-space: pre-wrap; } #saveMsg.ok { color: var(--neon); }
   .table-wrap { max-height: 520px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
@@ -68,6 +71,7 @@
   </div>
   <div class="row">
     <button data-a="ts_generate">1 · Generate search terms</button>
+    <button data-a="ts_baseline" title="Generates N times with the current prompt without saving the terms, to measure the model's own run-to-run noise (small API cost)">Noise baseline</button>
     <button data-a="ts_push">2 · Push</button>
     <button data-a="ts_set_target">3 · Set scrape target</button>
     <button data-a="view_scrape_target">View target</button>
@@ -78,6 +82,7 @@
   </div>
   <div class="row">
     <label class="hint"><input type="checkbox" id="force"> --force (regenerate / re-pull; overwrites an existing file)</label>
+    <label class="hint">baseline runs <input type="text" id="baselineN" value="6" style="width:46px"></label>
     <input type="text" id="terms" placeholder="optional: 'a;b;c' search terms, skips the LLM" style="width:380px">
   </div>
   <div id="preview"></div>
@@ -99,6 +104,16 @@
       <span class="hint" id="termsMsg"></span>
     </div>
   </details>
+</section>
+
+<section>
+  <h2>Generation history <span class="chip" id="genCount"></span></h2>
+  <div class="hint">Every LLM generation of search terms, saved with its exact prompt. Tick two rows to compare them. <b>Same-prompt</b> runs measure noise: a prompt edit only means something if it moves the terms more than the baseline does.</div>
+  <div id="baselineBox" class="hint" style="margin:8px 0"></div>
+  <div class="table-wrap" style="max-height:260px"><table><thead><tr>
+    <th></th><th>Time</th><th>Source</th><th>Model</th><th>Prompt</th><th>Terms</th></tr></thead><tbody id="genBody"></tbody></table></div>
+  <div class="row" style="margin-top:10px"><button id="cmpBtn" disabled>Compare ticked</button><button id="cmpLastBtn">Compare last two</button></div>
+  <div id="cmpOut"></div>
 </section>
 
 <section>
@@ -144,7 +159,7 @@ const PROMPT_TITLES = {
   stage2_with_posts: "Stage 2 — with sampled posts (not wired up yet)",
 };
 
-function params() { return {topic: $("topicSel").value, force: $("force").checked, terms: $("terms").value.trim()}; }
+function params() { return {topic: $("topicSel").value, force: $("force").checked, terms: $("terms").value.trim(), n: $("baselineN").value}; }
 async function preview(action) {
   ACTION = action;
   $("preview").textContent = "";
@@ -165,7 +180,7 @@ async function run(action) {
     const reader = res.body.getReader(), dec = new TextDecoder(); let first = true;
     for (;;) { const {done, value} = await reader.read(); if (done) break; log(dec.decode(value, {stream: true}), first ? "cmd" : ""); first = false; }
   } catch (e) { log("Request failed: " + e + "\n", "bad"); }
-  finally { setRunning(false); loadTopicStatus(); loadTerms(); loadLog(); }
+  finally { setRunning(false); loadTopicStatus(); loadTerms(); loadGens(); loadLog(); }
 }
 document.querySelectorAll("button[data-a]").forEach(b => {
   b.addEventListener("mouseenter", () => preview(b.dataset.a));
@@ -212,7 +227,46 @@ $("termsSaveBtn").onclick = async () => {
   if (!d.ok) { $("termsMsg").textContent = d.message; return; }
   termsMode(false); await loadTerms(); $("termsMsg").textContent = d.message; loadTopicStatus();
 };
-$("topicSel").onchange = () => { loadTopicStatus(); loadTerms(); };
+$("topicSel").onchange = () => { loadTopicStatus(); loadTerms(); loadGens(); };
+
+// ── generation history ──────────────────────────────────────────────────
+let GENS = [];
+async function loadGens() {
+  const slug = $("topicSel").value; if (!slug) return;
+  const d = await (await fetch("/api/third_sector/generations/" + slug)).json();
+  GENS = d.generations; $("cmpOut").innerHTML = ""; $("cmpBtn").disabled = true;
+  $("genCount").textContent = GENS.length;
+  $("genBody").innerHTML = GENS.slice().reverse().map(g => `<tr>
+    <td><input type="checkbox" class="genTick" value="${esc(g.id)}"></td>
+    <td>${esc(g.id.replace("T", " ").slice(0, 19))}</td><td>${esc(g.source)}</td><td>${esc(g.model)}</td>
+    <td><code>${esc(g.prompt_hash)}</code></td><td>${g.n}</td></tr>`).join("");
+  document.querySelectorAll(".genTick").forEach(c => c.onchange = () => {
+    const on = [...document.querySelectorAll(".genTick:checked")];
+    if (on.length > 2) c.checked = false;
+    $("cmpBtn").disabled = document.querySelectorAll(".genTick:checked").length !== 2;
+  });
+  const b = Object.entries(d.baselines);
+  $("baselineBox").innerHTML = b.length
+    ? "<b>Noise baseline</b> (same prompt, repeated): " + b.map(([h, v]) => `<code>${esc(h)}</code> — ${v.runs} runs, avg <b>${v.mean_pct}%</b> of terms change (max ${v.max_pct}%)`).join("; ")
+    : "No noise baseline yet — click “Noise baseline” in the Run panel.";
+}
+async function compareGens(a, b) {
+  const r = await (await fetch(`/api/third_sector/generations/${$("topicSel").value}/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`)).json();
+  if (r.error) { $("cmpOut").textContent = r.error; return; }
+  const list = (arr, cls) => arr.length ? `<ul>${arr.map(t => `<li class="${cls}">${esc(t)}</li>`).join("")}</ul>` : '<div class="hint">none</div>';
+  $("cmpOut").innerHTML = `<h3>${r.pct_changed}% changed — ${r.same_prompt ? "same prompt (noise)" : "prompt changed"}; ${r.kept.length} terms kept</h3>
+    <h3>Added in B (${r.added.length})</h3>${list(r.added, "diff-add")}
+    <h3>Removed from A (${r.removed.length})</h3>${list(r.removed, "diff-del")}
+    ${r.prompt_diff.length ? "<h3>Prompt diff</h3><pre>" + r.prompt_diff.map(l => `<span class="${l[0] === "+" ? "diff-add" : l[0] === "-" ? "diff-del" : ""}">${esc(l)}</span>`).join("\n") + "</pre>" : ""}`;
+}
+$("cmpBtn").onclick = () => {
+  const ids = [...document.querySelectorAll(".genTick:checked")].map(c => c.value).sort();
+  compareGens(ids[0], ids[1]);
+};
+$("cmpLastBtn").onclick = () => {
+  if (GENS.length < 2) { $("cmpOut").textContent = "Need at least two generations."; return; }
+  compareGens(GENS[GENS.length - 2].id, GENS[GENS.length - 1].id);
+};
 
 // ── prompt editor ───────────────────────────────────────────────────────
 function promptBox(k, text, attrs, custom) {
@@ -274,7 +328,7 @@ function renderLog() {
 }
 $("logFilter").oninput = renderLog; $("logTopic").onchange = renderLog; $("logRefresh").onclick = loadLog;
 
-loadTopicStatus().then(loadTerms); loadConfig(); loadLog();
+loadTopicStatus().then(() => { loadTerms(); loadGens(); }); loadConfig(); loadLog();
 </script>
 </body>
 </html>

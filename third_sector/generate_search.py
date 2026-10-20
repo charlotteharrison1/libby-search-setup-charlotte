@@ -16,11 +16,34 @@ import sys
 import pandas as pd
 
 from libby_core import ai
-from third_sector import config
+from third_sector import config, generations
 from third_sector.settings import SEARCH_TARGETS_DIR
 
 logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "google/gemini-3-flash-preview"
+
+
+def _generate_terms(slug: str, topic: dict, model: str, source: str) -> list[str]:
+    """One LLM generation of search terms, logged with its exact prompt (see generations.py)."""
+    prompt = config.prompt_for(topic, "keyword_expansion").format(
+        topic=topic["name"], topic_description=topic["description"]
+    )
+    reply = ai.get_llm_text_response(prompt, model=model)
+    terms = [t for t in (line.strip(" -*•\t") for line in reply.splitlines()) if t]
+    generations.record(slug, "keyword_expansion", prompt, model, terms, source)
+    return terms
+
+
+def baseline(slug: str, n: int, model: str = DEFAULT_MODEL):
+    """Generate n times with the CURRENT prompt, logging each, without touching the
+    search-targets file — the runs only exist to measure the model's own noise."""
+    topic = config.get_topic(slug)
+    for i in range(n):
+        terms = _generate_terms(slug, topic, model, "baseline")
+        logger.info("baseline %d/%d: %d terms", i + 1, n, len(terms))
+    entries = generations.load(slug)
+    for h, b in generations.baselines(entries).items():
+        logger.info("prompt %s: %d runs, mean %.1f%% / max %.1f%% changed", h, b["runs"], b["mean_pct"], b["max_pct"])
 
 
 def run(slug: str, terms: list[str] | None = None, scroll: int = 3, force: bool = False, model: str = DEFAULT_MODEL):
@@ -31,11 +54,7 @@ def run(slug: str, terms: list[str] | None = None, scroll: int = 3, force: bool 
 
     topic = config.get_topic(slug)
     if not terms:
-        prompt = config.prompt_for(topic, "keyword_expansion").format(
-            topic=topic["name"], topic_description=topic["description"]
-        )
-        reply = ai.get_llm_text_response(prompt, model=model)
-        terms = [t.strip(" -*•\t") for t in reply.splitlines()]
+        terms = _generate_terms(slug, topic, model, "llm")
     topic_name = topic["name"]
     save_terms(slug, [topic_name, *terms], scroll)
 
@@ -72,9 +91,12 @@ def main():
     p.add_argument("--terms", help="';'-separated search terms, skipping the LLM")
     p.add_argument("--scroll", type=int, default=3, help="Page-down scroll count per search (default 3)")
     p.add_argument("--force", action="store_true")
+    p.add_argument("--baseline", type=int, metavar="N", help="Generate N times with the current prompt, log them, and write no file")
     p.add_argument("--model", default=DEFAULT_MODEL)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    if a.baseline:
+        return baseline(a.topic, a.baseline, a.model)
     run(a.topic, [t.strip() for t in a.terms.split(";")] if a.terms else None, a.scroll, a.force, a.model)
 
 
