@@ -71,6 +71,7 @@
   </div>
   <div class="row">
     <button data-a="ts_generate">1 · Generate search terms</button>
+    <button data-a="ts_consensus" title="Generates N times (baseline runs box) and saves only the terms at least 'keep if in' runs agree on. Costs N API calls.">1b · Generate (consensus)</button>
     <button data-a="ts_baseline" title="Generates N times with the current prompt without saving the terms, to measure the model's own run-to-run noise (small API cost)">Noise baseline</button>
     <button data-a="ts_push">2 · Push</button>
     <button data-a="ts_set_target">3 · Set scrape target</button>
@@ -82,7 +83,8 @@
   </div>
   <div class="row">
     <label class="hint"><input type="checkbox" id="force"> --force (regenerate / re-pull; overwrites an existing file)</label>
-    <label class="hint">baseline runs <input type="text" id="baselineN" value="6" style="width:46px"></label>
+    <label class="hint">keep if in ≥ <input type="text" id="minAgree" placeholder="majority" style="width:60px"> runs</label>
+    <label class="hint">baseline runs <input type="text" id="baselineN" value="5" style="width:46px"></label>
     <input type="text" id="terms" placeholder="optional: 'a;b;c' search terms, skips the LLM" style="width:380px">
   </div>
   <div id="preview"></div>
@@ -107,13 +109,22 @@
 </section>
 
 <section>
-  <h2>Generation history <span class="chip" id="genCount"></span></h2>
-  <div class="hint">Every LLM generation of search terms, saved with its exact prompt. Tick two rows to compare them. <b>Same-prompt</b> runs measure noise: a prompt edit only means something if it moves the terms more than the baseline does.</div>
+  <details id="genBox" open><summary><h2 style="display:inline">Generation history <span class="chip" id="genCount"></span></h2></summary>
+  <div class="hint">Every LLM generation of search terms, saved with its exact prompt. Tick two or more rows to compare them. <b>Same-prompt, same-model</b> runs measure noise: a prompt edit only means something if it moves the terms more than the baseline does.</div>
   <div id="baselineBox" class="hint" style="margin:8px 0"></div>
   <div class="table-wrap" style="max-height:260px"><table><thead><tr>
-    <th></th><th>Time</th><th>Source</th><th>Model</th><th>Prompt</th><th>Terms</th></tr></thead><tbody id="genBody"></tbody></table></div>
+    <th></th><th>Label</th><th>Time</th><th>Source</th><th>Model</th><th>Prompt</th><th>Terms</th></tr></thead><tbody id="genBody"></tbody></table></div>
   <div class="row" style="margin-top:10px"><button id="cmpBtn" disabled>Compare ticked</button><button id="cmpLastBtn">Compare last two</button></div>
   <div id="cmpOut"></div>
+
+  <h3>All terms across runs</h3>
+  <div class="hint">Pick a prompt + model: rows are every distinct term, columns are that prompt's runs (● = produced it). Sorted by how many runs produced it.</div>
+  <div class="row"><select id="matrixHash"></select></div>
+  <div id="matrixTbl"></div>
+
+  <h3>How the noise is calculated</h3>
+  <div id="noiseOut" class="hint"></div>
+  </details>
 </section>
 
 <section>
@@ -159,7 +170,7 @@ const PROMPT_TITLES = {
   stage2_with_posts: "Stage 2 — with sampled posts (not wired up yet)",
 };
 
-function params() { return {topic: $("topicSel").value, force: $("force").checked, terms: $("terms").value.trim(), n: $("baselineN").value}; }
+function params() { return {topic: $("topicSel").value, force: $("force").checked, terms: $("terms").value.trim(), n: $("baselineN").value, min_agree: $("minAgree").value}; }
 async function preview(action) {
   ACTION = action;
   $("preview").textContent = "";
@@ -236,32 +247,70 @@ async function loadGens() {
   const d = await (await fetch("/api/third_sector/generations/" + slug)).json();
   GENS = d.generations; $("cmpOut").innerHTML = ""; $("cmpBtn").disabled = true;
   $("genCount").textContent = GENS.length;
+  GENS.forEach((g, i) => g.label = "G" + (i + 1));
   $("genBody").innerHTML = GENS.slice().reverse().map(g => `<tr>
-    <td><input type="checkbox" class="genTick" value="${esc(g.id)}"></td>
+    <td><input type="checkbox" class="genTick" value="${esc(g.id)}"></td><td><b>${g.label}</b></td>
     <td>${esc(g.id.replace("T", " ").slice(0, 19))}</td><td>${esc(g.source)}</td><td>${esc(g.model)}</td>
     <td><code>${esc(g.prompt_hash)}</code></td><td>${g.n}</td></tr>`).join("");
   document.querySelectorAll(".genTick").forEach(c => c.onchange = () => {
-    const on = [...document.querySelectorAll(".genTick:checked")];
-    if (on.length > 2) c.checked = false;
-    $("cmpBtn").disabled = document.querySelectorAll(".genTick:checked").length !== 2;
+    $("cmpBtn").disabled = document.querySelectorAll(".genTick:checked").length < 2;
   });
   const b = Object.entries(d.baselines);
   $("baselineBox").innerHTML = b.length
-    ? "<b>Noise baseline</b> (same prompt, repeated): " + b.map(([h, v]) => `<code>${esc(h)}</code> — ${v.runs} runs, avg <b>${v.mean_pct}%</b> of terms change (max ${v.max_pct}%)`).join("; ")
+    ? "<b>Noise baseline</b> (same prompt, repeated): " + b.map(([h, v]) => `<code>${esc(v.prompt_hash)}</code> · ${esc(v.model)} — ${v.runs} runs, avg <b>${v.mean_pct}%</b> of terms change (max ${v.max_pct}%)`).join("; ")
     : "No noise baseline yet — click “Noise baseline” in the Run panel.";
+  const counts = {}; GENS.forEach(g => counts[g.group] = (counts[g.group] || 0) + 1);
+  const hashes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  $("matrixHash").innerHTML = hashes.map(h => `<option value="${esc(h)}">${esc(h.replace("|", " · "))} — ${counts[h]} run(s)</option>`).join("");
+  loadMatrix();
 }
+const labelOf = id => (GENS.find(g => g.id === id) || {}).label || id;
+function matrixTable(m) {
+  const n = m.runs.length, hash = id => (GENS.find(g => g.id === id) || {}).group || "";
+  return `<div class="table-wrap" style="max-height:420px"><table><thead><tr><th>Term</th>` +
+    m.runs.map(id => `<th title="prompt · model: ${esc(hash(id).replace("|", " · "))}">${esc(labelOf(id))}</th>`).join("") + `<th>In</th></tr></thead><tbody>` +
+    m.terms.map(t => `<tr><td>${esc(t.term)}</td>` + t.present.map(p => `<td>${p ? "●" : ""}</td>`).join("") + `<td>${t.count}/${n}</td></tr>`).join("") +
+    `</tbody></table></div>`;
+}
+async function compareMany(ids) {
+  const m = await (await fetch(`/api/third_sector/generations/${$("topicSel").value}/matrix?ids=${encodeURIComponent(ids.join(","))}`)).json();
+  const hashes = new Set(ids.map(i => (GENS.find(g => g.id === i) || {}).group));
+  $("cmpOut").innerHTML = `<h3>${ids.length} generations — ${hashes.size === 1 ? "same prompt and model (noise)" : hashes.size + " different prompt/model combinations (hover a column label to see which)"}</h3>` +
+    matrixTable(m) + `<div class="table-wrap" style="max-height:260px"><table><thead><tr><th>Pair</th><th>Kept</th><th>Removed</th><th>Added</th><th>% changed</th></tr></thead><tbody>` +
+    m.pairs.map(p => `<tr><td>${esc(labelOf(m.runs[p.a - 1]))} vs ${esc(labelOf(m.runs[p.b - 1]))}</td><td>${p.kept}</td><td>${p.removed}</td><td>${p.added}</td><td><b>${p.pct}%</b></td></tr>`).join("") +
+    `</tbody></table></div><div class="hint">Mean ${m.mean_pct}%, max ${m.max_pct}% across ${m.pairs.length} pairs.</div>`;
+}
+async function loadMatrix() {
+  const h = $("matrixHash").value;
+  if (!h) { $("matrixTbl").innerHTML = ""; $("noiseOut").textContent = "No generations yet."; return; }
+  const m = await (await fetch(`/api/third_sector/generations/${$("topicSel").value}/matrix?hash=${encodeURIComponent(h)}`)).json();
+  const n = m.runs.length;
+  $("matrixTbl").innerHTML = matrixTable(m);
+  const stable = m.terms.filter(t => t.count === n).length;
+  if (n < 2) { $("noiseOut").textContent = "Need at least 2 runs of this prompt — click “Noise baseline”."; return; }
+  $("noiseOut").innerHTML = `<p>For every pair of runs with the same prompt, compare their term lists (lower-cased, whitespace-normalised):<br>
+    <b>% changed = (added + removed) ÷ distinct terms in either run</b>, where added = in the later run only, removed = in the earlier run only.
+    Two identical lists give 0%; two with nothing in common give 100%.</p>
+    <div class="table-wrap" style="max-height:300px"><table><thead><tr><th>Pair</th><th>Kept</th><th>Removed</th><th>Added</th><th>Distinct (union)</th><th>Calculation</th><th>% changed</th></tr></thead><tbody>` +
+    m.pairs.map(p => `<tr><td>${esc(labelOf(m.runs[p.a - 1]))} vs ${esc(labelOf(m.runs[p.b - 1]))}</td><td>${p.kept}</td><td>${p.removed}</td><td>${p.added}</td><td>${p.union}</td>
+      <td>(${p.added} + ${p.removed}) ÷ ${p.union}</td><td><b>${p.pct}%</b></td></tr>`).join("") +
+    `</tbody></table></div>
+    <p>${n} runs → ${m.pairs.length} pairs. <b>Noise = mean ${m.mean_pct}%</b> (worst pair ${m.max_pct}%). ${stable} of ${m.terms.length} distinct terms appeared in every run.
+    A prompt edit only counts as a real change if its % changed is clearly above this.</p>`;
+}
+$("matrixHash").onchange = loadMatrix;
 async function compareGens(a, b) {
   const r = await (await fetch(`/api/third_sector/generations/${$("topicSel").value}/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`)).json();
   if (r.error) { $("cmpOut").textContent = r.error; return; }
   const list = (arr, cls) => arr.length ? `<ul>${arr.map(t => `<li class="${cls}">${esc(t)}</li>`).join("")}</ul>` : '<div class="hint">none</div>';
-  $("cmpOut").innerHTML = `<h3>${r.pct_changed}% changed — ${r.same_prompt ? "same prompt (noise)" : "prompt changed"}; ${r.kept.length} terms kept</h3>
+  $("cmpOut").innerHTML = `<h3>${r.pct_changed}% changed — ${r.same_prompt ? "same prompt and model (noise)" : "prompt or model changed"}; ${r.kept.length} terms kept</h3>
     <h3>Added in B (${r.added.length})</h3>${list(r.added, "diff-add")}
     <h3>Removed from A (${r.removed.length})</h3>${list(r.removed, "diff-del")}
     ${r.prompt_diff.length ? "<h3>Prompt diff</h3><pre>" + r.prompt_diff.map(l => `<span class="${l[0] === "+" ? "diff-add" : l[0] === "-" ? "diff-del" : ""}">${esc(l)}</span>`).join("\n") + "</pre>" : ""}`;
 }
 $("cmpBtn").onclick = () => {
   const ids = [...document.querySelectorAll(".genTick:checked")].map(c => c.value).sort();
-  compareGens(ids[0], ids[1]);
+  if (ids.length === 2) compareGens(ids[0], ids[1]); else compareMany(ids);
 };
 $("cmpLastBtn").onclick = () => {
   if (GENS.length < 2) { $("cmpOut").textContent = "Need at least two generations."; return; }

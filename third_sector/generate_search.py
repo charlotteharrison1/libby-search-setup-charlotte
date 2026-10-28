@@ -43,17 +43,34 @@ def baseline(slug: str, n: int, model: str = DEFAULT_MODEL):
         logger.info("baseline %d/%d: %d terms", i + 1, n, len(terms))
     entries = generations.load(slug)
     for h, b in generations.baselines(entries).items():
-        logger.info("prompt %s: %d runs, mean %.1f%% / max %.1f%% changed", h, b["runs"], b["mean_pct"], b["max_pct"])
+        logger.info("prompt %s (%s): %d runs, mean %.1f%% / max %.1f%% changed", b["prompt_hash"], b["model"], b["runs"], b["mean_pct"], b["max_pct"])
 
 
-def run(slug: str, terms: list[str] | None = None, scroll: int = 3, force: bool = False, model: str = DEFAULT_MODEL):
+def consensus_terms(runs: list[list[str]], min_agree: int) -> list[str]:
+    """Terms (first-seen spelling) produced by >= min_agree runs, most-agreed first."""
+    count, label = {}, {}
+    for r in runs:
+        for k in {generations.norm(t) for t in r}:
+            count[k] = count.get(k, 0) + 1
+        for t in r:
+            label.setdefault(generations.norm(t), t)
+    return [label[k] for k in sorted(count, key=lambda k: -count[k]) if count[k] >= min_agree]
+
+
+def run(slug: str, terms: list[str] | None = None, scroll: int = 3, force: bool = False, model: str = DEFAULT_MODEL,
+        consensus: int = 0, min_agree: int = 0):
     out = SEARCH_TARGETS_DIR / f"{slug}_search_targets.csv"
     if out.exists() and not force:
         logger.error("%s already exists (it may hold scraped data). Use --force to overwrite.", out)
         sys.exit(1)
 
     topic = config.get_topic(slug)
-    if not terms:
+    if not terms and consensus:
+        min_agree = min_agree or consensus // 2 + 1
+        runs = [_generate_terms(slug, topic, model, "consensus") for _ in range(consensus)]
+        terms = consensus_terms(runs, min_agree)
+        logger.info("consensus: kept %d terms found in >=%d of %d runs", len(terms), min_agree, consensus)
+    elif not terms:
         terms = _generate_terms(slug, topic, model, "llm")
     topic_name = topic["name"]
     save_terms(slug, [topic_name, *terms], scroll)
@@ -92,12 +109,14 @@ def main():
     p.add_argument("--scroll", type=int, default=3, help="Page-down scroll count per search (default 3)")
     p.add_argument("--force", action="store_true")
     p.add_argument("--baseline", type=int, metavar="N", help="Generate N times with the current prompt, log them, and write no file")
+    p.add_argument("--consensus", type=int, metavar="N", help="Generate N times and keep only terms most runs agree on")
+    p.add_argument("--min-agree", type=int, default=0, help="With --consensus: keep terms in at least this many runs (default: majority)")
     p.add_argument("--model", default=DEFAULT_MODEL)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if a.baseline:
         return baseline(a.topic, a.baseline, a.model)
-    run(a.topic, [t.strip() for t in a.terms.split(";")] if a.terms else None, a.scroll, a.force, a.model)
+    run(a.topic, [t.strip() for t in a.terms.split(";")] if a.terms else None, a.scroll, a.force, a.model, a.consensus, a.min_agree)
 
 
 if __name__ == "__main__":

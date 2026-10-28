@@ -180,9 +180,18 @@ def api_third_sector_generations(slug):
     """History (newest last, prompts omitted for size) + per-prompt noise baselines."""
     entries = ts_generations.load(slugify(slug))
     return jsonify({
-        "generations": [{k: e[k] for k in ("id", "stage", "source", "model", "prompt_hash")} | {"n": len(e["outputs"])} for e in entries],
+        "generations": [{k: e[k] for k in ("id", "stage", "source", "model", "prompt_hash")} | {"n": len(e["outputs"]), "group": ts_generations.group_key(e)} for e in entries],
         "baselines": ts_generations.baselines(entries),
     })
+
+
+@app.route("/api/third_sector/generations/<slug>/matrix")
+def api_third_sector_matrix(slug):
+    """Term x run table + pairwise noise arithmetic for all runs sharing one prompt hash."""
+    entries = ts_generations.load(slugify(slug))
+    ids = request.args.get("ids")
+    runs = [e for e in entries if e["id"] in ids.split(",")] if ids else [e for e in entries if ts_generations.group_key(e) == request.args.get("hash")]
+    return jsonify(ts_generations.matrix(runs))
 
 
 @app.route("/api/third_sector/generations/<slug>/compare")

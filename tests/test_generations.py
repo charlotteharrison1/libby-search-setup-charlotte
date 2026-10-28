@@ -37,4 +37,12 @@ def test_compare_shows_prompt_diff():
 def test_baselines_only_for_repeated_prompts():
     _rec(["a", "b"], "same"); _rec(["a", "c"], "same"); _rec(["x"], "other")
     out = generations.baselines(generations.load("t"))
-    assert list(out.values()) == [{"runs": 2, "mean_pct": 66.7, "max_pct": 66.7}]
+    assert [{k: v for k, v in o.items() if k not in ("prompt_hash", "model")} for o in out.values()] == [{"runs": 2, "mean_pct": 66.7, "max_pct": 66.7}]
+
+
+def test_matrix_counts_and_pairs():
+    a = {"id": "1", "prompt": "p", "prompt_hash": "h", "outputs": ["x", "Y"]}
+    b = {"id": "2", "prompt": "p", "prompt_hash": "h", "outputs": ["y", "z"]}
+    m = generations.matrix([a, b])
+    assert [(t["term"], t["count"]) for t in m["terms"]] == [("Y", 2), ("x", 1), ("z", 1)]
+    assert m["pairs"][0] | {} == {"a": 1, "b": 2, "kept": 1, "added": 1, "removed": 1, "union": 3, "pct": 66.7}

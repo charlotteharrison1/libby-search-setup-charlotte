@@ -3,7 +3,7 @@ prompt used, plus comparison between any two generations.
 
 One JSONL file per topic: third_sector/data/generations/<slug>.jsonl. Each line:
 {id, stage, source ("llm" | "baseline"), model, prompt, prompt_hash, outputs: [...]}.
-Runs sharing a prompt_hash form the noise baseline: how much the output moves
+Runs sharing a prompt_hash AND model form the noise baseline: how much the output moves
 when nothing about the prompt changed.
 
     python -m third_sector.generations --topic uk_environmental_groups            # last two
@@ -60,7 +60,7 @@ def compare(a: dict, b: dict) -> dict:
     union = len(set(sa) | set(sb))
     return {
         "a": a["id"], "b": b["id"],
-        "same_prompt": a["prompt_hash"] == b["prompt_hash"],
+        "same_prompt": group_key(a) == group_key(b),
         "added": added, "removed": removed, "kept": kept,
         "pct_changed": round(100 * (len(added) + len(removed)) / union, 1) if union else 0.0,
         "prompt_diff": [] if a["prompt"] == b["prompt"] else list(difflib.unified_diff(
@@ -68,18 +68,42 @@ def compare(a: dict, b: dict) -> dict:
     }
 
 
+def group_key(e: dict) -> str:
+    """Runs only count as repeats of each other if prompt and model both match."""
+    return f"{e['prompt_hash']}|{e['model']}"
+
+
 def baselines(entries: list[dict]) -> dict[str, dict]:
-    """Per prompt_hash with >=2 runs: pairwise % changed between same-prompt runs."""
+    """Per (prompt_hash, model) with >=2 runs: pairwise % changed between same-prompt runs."""
     by_hash: dict[str, list[dict]] = {}
     for e in entries:
-        by_hash.setdefault(e["prompt_hash"], []).append(e)
+        by_hash.setdefault(group_key(e), []).append(e)
     out = {}
     for h, runs in by_hash.items():
         if len(runs) < 2:
             continue
         pcts = [compare(x, y)["pct_changed"] for x, y in itertools.combinations(runs, 2)]
-        out[h] = {"runs": len(runs), "mean_pct": round(sum(pcts) / len(pcts), 1), "max_pct": max(pcts)}
+        out[h] = {"prompt_hash": runs[0]["prompt_hash"], "model": runs[0]["model"], "runs": len(runs), "mean_pct": round(sum(pcts) / len(pcts), 1), "max_pct": max(pcts)}
     return out
+
+
+def matrix(runs: list[dict]) -> dict:
+    """Term x run presence table plus every pairwise comparison, for same-prompt runs."""
+    labels = {}
+    for r in runs:
+        for t in r["outputs"]:
+            labels.setdefault(norm(t), t)
+    sets = [{norm(t) for t in r["outputs"]} for r in runs]
+    terms = [{"term": labels[k], "present": [k in s for s in sets], "count": sum(k in s for s in sets)} for k in labels]
+    terms.sort(key=lambda t: (-t["count"], t["term"].lower()))
+    pairs = []
+    for i, j in itertools.combinations(range(len(runs)), 2):
+        c = compare(runs[i], runs[j])
+        pairs.append({"a": i + 1, "b": j + 1, "kept": len(c["kept"]), "added": len(c["added"]),
+                      "removed": len(c["removed"]), "union": len(sets[i] | sets[j]), "pct": c["pct_changed"]})
+    pcts = [p["pct"] for p in pairs]
+    return {"runs": [r["id"] for r in runs], "terms": terms, "pairs": pairs,
+            "mean_pct": round(sum(pcts) / len(pcts), 1) if pcts else None, "max_pct": max(pcts, default=None)}
 
 
 def main():
@@ -101,7 +125,7 @@ def main():
     print("added:  ", r["added"]); print("removed:", r["removed"]); print("kept:   ", len(r["kept"]))
     print("\n".join(r["prompt_diff"]))
     for h, s in baselines(entries).items():
-        print(f"baseline {h}: {s['runs']} runs, mean {s['mean_pct']}% / max {s['max_pct']}% changed")
+        print(f"baseline {s['prompt_hash']} ({s['model']}): {s['runs']} runs, mean {s['mean_pct']}% / max {s['max_pct']}% changed")
 
 
 if __name__ == "__main__":

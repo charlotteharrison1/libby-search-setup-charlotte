@@ -274,6 +274,16 @@ def _ts_generate(row, params):
     return cmd
 
 
+def _ts_consensus(row, params):
+    n = max(2, min(int(params.get("n") or 5), 10))
+    cmd = ["python3", "-m", "third_sector.generate_search", "--topic", _topic(params), "--consensus", str(n)]
+    if params.get("min_agree"):
+        cmd += ["--min-agree", str(max(1, min(int(params["min_agree"]), n)))]
+    if params.get("force"):
+        cmd.append("--force")
+    return cmd
+
+
 def _ts_baseline(row, params):
     n = str(max(2, min(int(params.get("n") or 3), 10)))
     return ["python3", "-m", "third_sector.generate_search", "--topic", _topic(params), "--baseline", n]
@@ -300,6 +310,7 @@ def _ts_collect(row, params):
 
 TS_ACTIONS = {
     "ts_generate":   ("Generate search terms", "Prep",    False, _ts_generate),
+    "ts_consensus":  ("Generate (consensus)",  "Prep",    False, _ts_consensus),
     "ts_baseline":   ("Noise baseline",        "Prep",    False, _ts_baseline),
     "ts_push":       ("Push to libby",         "Push",    False, _ts_push),
     "ts_set_target": ("Set scrape target",     "Remote",  False, _ts_set_target),
